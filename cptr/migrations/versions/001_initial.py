@@ -86,7 +86,20 @@ def upgrade() -> None:
         sa.Column("created_at", sa.BigInteger, nullable=False),
     )
 
+    op.create_table(
+        "workspaces",
+        sa.Column("id", sa.Text, primary_key=True),
+        sa.Column("user_id", sa.Text, sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("path", sa.Text, nullable=False),
+        sa.Column("name", sa.Text, nullable=False),
+        sa.Column("data", sa.JSON, nullable=False, server_default="{}"),
+        sa.Column("created_at", sa.BigInteger, nullable=False),
+        sa.Column("updated_at", sa.BigInteger, nullable=True),
+        sa.UniqueConstraint("user_id", "path", name="uq_workspace_user_path"),
+    )
+
 def downgrade() -> None:
+    op.drop_table("workspaces")
     op.drop_table("chat_message")
     op.drop_table("chat")
     op.drop_table("files")

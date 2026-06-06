@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { addWorkspace } from '$lib/stores';
 	import { getWelcome } from '$lib/apis/state';
 	import { listDir } from '$lib/apis/files';
@@ -75,6 +76,7 @@
 
 	function selectCurrent() {
 		addWorkspace(currentPath);
+		goto(`/?workspace=${encodeURIComponent(currentPath)}`);
 		onclose();
 	}
 
@@ -177,7 +179,7 @@
 								? 'bg-gray-100 text-gray-900 dark:bg-white/6 dark:text-white'
 								: 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/4'}"
 						onclick={() => navigateTo(dir.name)}
-						ondblclick={(e) => { e.stopPropagation(); const fullPath = currentPath === '/' ? `/${dir.name}` : `${currentPath}/${dir.name}`; addWorkspace(fullPath); onclose(); }}
+						ondblclick={(e) => { e.stopPropagation(); const fullPath = currentPath === '/' ? `/${dir.name}` : `${currentPath}/${dir.name}`; addWorkspace(fullPath); goto(`/?workspace=${encodeURIComponent(fullPath)}`); onclose(); }}
 						onmouseenter={() => { selectedIndex = i; }}
 					>
 						<Icon name="folder" size={14} class="shrink-0 text-gray-400" />

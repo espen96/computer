@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { activeWorkspace, activeTab, workspaces, activeWorkspaceId, addWorkspace, gitReviewOpen, setActiveGroup, setSplitRatio, moveTabToGroup, openInSplit, openTabInSplit, setSplitDirection } from '$lib/stores';
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
+	import { currentWorkspace, activeTab, workspaceList, addWorkspace, loadWorkspace, gitReviewOpen, setActiveGroup, setSplitRatio, moveTabToGroup, openInSplit, openTabInSplit, setSplitDirection } from '$lib/stores';
 	import { splitActive } from '$lib/stores';
 	import type { Tab, EditorGroup, WorkspaceState } from '$lib/stores';
 	import { t } from '$lib/i18n';
@@ -18,6 +20,23 @@
 	import SystemInfo from '$lib/components/SystemInfo.svelte';
 
 	let showPicker = $state(false);
+
+	// ── URL-driven workspace loading ───────────────────────────────
+	// The workspace path comes from the URL query param: ?workspace=/path/to/dir
+	// Each browser tab has its own URL → its own workspace.
+
+	let lastLoadedPath = $state<string | null>(null);
+
+	$effect(() => {
+		const wsPath = $page.url.searchParams.get('workspace');
+		if (wsPath && wsPath !== lastLoadedPath) {
+			lastLoadedPath = wsPath;
+			loadWorkspace(wsPath);
+		} else if (!wsPath && lastLoadedPath !== null) {
+			lastLoadedPath = null;
+			currentWorkspace.set(null);
+		}
+	});
 
 	// Welcome page data
 	let welcomeData = $state<{
@@ -46,7 +65,7 @@
 
 	// Fetch welcome data whenever no workspace is active
 	$effect(() => {
-		if (!$activeWorkspace) {
+		if (!$currentWorkspace) {
 			getWelcome()
 				.then((data) => { welcomeData = data; })
 				.catch(() => {});
@@ -56,7 +75,7 @@
 	// Lazy-init terminal sessions for any group's active tab
 	let initingTerminal = $state(false);
 	$effect(() => {
-		const ws = $activeWorkspace;
+		const ws = $currentWorkspace;
 		if (!ws || initingTerminal) return;
 
 		// Find any terminal tab across all groups that needs a session
@@ -66,22 +85,18 @@
 				initingTerminal = true;
 				createSession(ws.path)
 					.then((data) => {
-						const wsId = get(activeWorkspaceId);
-						if (!wsId) return;
-						workspaces.update((list) =>
-							list.map((w) => {
-								if (w.id !== wsId) return w;
-								return {
-									...w,
-									groups: w.groups.map((g) => ({
-										...g,
-										tabs: g.tabs.map((t) =>
-											t.id === tab.id ? { ...t, sessionId: data.session_id } : t
-										),
-									})),
-								};
-							})
-						);
+						currentWorkspace.update((w) => {
+							if (!w) return w;
+							return {
+								...w,
+								groups: w.groups.map((g) => ({
+									...g,
+									tabs: g.tabs.map((t) =>
+										t.id === tab.id ? { ...t, sessionId: data.session_id } : t
+									),
+								})),
+							};
+						});
 					})
 					.catch((e) => console.error('Failed to init terminal:', e))
 					.finally(() => { initingTerminal = false; });
@@ -92,6 +107,7 @@
 
 	function quickOpen(path: string) {
 		addWorkspace(path);
+		goto(`/?workspace=${encodeURIComponent(path)}`);
 	}
 
 	function shortenPath(path: string): string {
@@ -116,7 +132,7 @@
 	function handleDividerPointerMove(e: PointerEvent) {
 		if (!isDragging || !containerEl) return;
 		const rect = containerEl.getBoundingClientRect();
-		const direction = $activeWorkspace?.splitDirection ?? 'horizontal';
+		const direction = $currentWorkspace?.splitDirection ?? 'horizontal';
 
 		let ratio: number;
 		if (direction === 'horizontal') {
@@ -141,15 +157,15 @@
 		return () => window.removeEventListener('resize', onResize);
 	});
 
-	const allGroups = $derived($activeWorkspace?.groups ?? []);
-	const splitDirection = $derived($activeWorkspace?.splitDirection ?? 'horizontal');
-	const splitRatio = $derived($activeWorkspace?.splitRatio ?? 0.5);
+	const allGroups = $derived($currentWorkspace?.groups ?? []);
+	const splitDirection = $derived($currentWorkspace?.splitDirection ?? 'horizontal');
+	const splitRatio = $derived($currentWorkspace?.splitRatio ?? 0.5);
 
 	// On mobile, collapse to just the active group
 	const displayGroups = $derived(
 		isWideScreen
 			? allGroups
-			: allGroups.filter((g) => g.id === $activeWorkspace?.activeGroupId).slice(0, 1)
+			: allGroups.filter((g) => g.id === $currentWorkspace?.activeGroupId).slice(0, 1)
 	);
 	const hasSplit = $derived(displayGroups.length > 1);
 
@@ -212,7 +228,7 @@
 		setSplitDirection(direction as any);
 
 		// Move the dragged tab into a new split pane
-		const ws = $activeWorkspace;
+		const ws = $currentWorkspace;
 		if (ws) {
 			const sourceGroup = ws.groups.find((g) => g.id === fromGroupId);
 			const tab = sourceGroup?.tabs.find((t) => t.id === tabId);
@@ -224,7 +240,7 @@
 	}
 </script>
 
-{#if !$activeWorkspace}
+{#if !$currentWorkspace}
 	<div class="flex items-center justify-center h-full p-6 overflow-y-auto">
 		<div class="w-full max-w-md">
 			<!-- Header -->
@@ -374,7 +390,7 @@
 							</div>
 						{:else if groupTab.type === 'chat'}
 							{#key groupTab.id}
-								<ChatPanel workspace={$activeWorkspace.path} chatId={groupTab.path?.startsWith('new-') ? undefined : groupTab.path} tabId={groupTab.id} />
+								<ChatPanel workspace={$currentWorkspace.path} chatId={groupTab.path?.startsWith('new-') ? undefined : groupTab.path} tabId={groupTab.id} />
 							{/key}
 						{:else if groupTab.type === 'preview' && groupTab.port}
 							<PortPreview port={groupTab.port} />

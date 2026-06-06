@@ -1,8 +1,9 @@
 """Server-side persistent state for cptr.
 
-Stores workspace config, tabs, theme, and UI state in the user_states table
-so that closing the browser loses nothing. Any device can reconnect
-and see the same state. Per-user scoping via authenticated user.
+Three layers:
+  - preferences: global user prefs in user_states table
+  - workspaces: per-workspace state in workspaces table (one row per user+path)
+  - active workspace: determined by URL query param, not stored server-side
 """
 
 from __future__ import annotations
@@ -10,12 +11,11 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
-from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Request, Query
 from cptr.env import DATA_DIR
-from cptr.models import UserStates
+from cptr.models import UserStates, Workspace
 from cptr.utils.config import get_or_create_user
 
 router = APIRouter(prefix="/api/state", tags=["state"])
@@ -25,27 +25,96 @@ def _ensure_dir() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
-@router.get("")
-async def get_state(request: Request):
-    """Return the full persisted app state for the authenticated user."""
+async def _get_user_id(request: Request) -> str | None:
     auth = getattr(request.state, "auth", None)
-    username = auth.username if auth else None
-    if not username:
+    if not auth or not auth.username:
+        return None
+    return await get_or_create_user(auth.username)
+
+
+# ── Preferences ──────────────────────────────────────────────────
+
+@router.get("/preferences")
+async def get_preferences(request: Request):
+    """Return global user preferences (theme, locale, etc.)."""
+    user_id = await _get_user_id(request)
+    if not user_id:
         return {}
-    user_id = await get_or_create_user(username)
     return await UserStates.get_data(user_id)
 
 
-@router.put("")
-async def put_state(request: Request):
-    """Save the full app state for the authenticated user."""
-    auth = getattr(request.state, "auth", None)
-    username = auth.username if auth else None
-    if not username:
+@router.put("/preferences")
+async def put_preferences(request: Request):
+    """Save global user preferences."""
+    user_id = await _get_user_id(request)
+    if not user_id:
         return {"status": "skipped"}
     body = await request.json()
+    await UserStates.save_data(user_id, body)
+    return {"status": "saved"}
 
-    # Track workspace history (still file-based)
+
+# ── Workspace list ───────────────────────────────────────────────
+
+@router.get("/workspaces")
+async def get_workspace_list(request: Request):
+    """Return list of all workspace summaries for the sidebar."""
+    user_id = await _get_user_id(request)
+    if not user_id:
+        return []
+    workspaces = await Workspace.get_by_user(user_id)
+    return [{"path": ws.path, "name": ws.name} for ws in workspaces]
+
+
+# ── Single workspace CRUD ────────────────────────────────────────
+
+@router.get("/workspace")
+async def get_workspace(request: Request, path: str = Query(...)):
+    """Return full state for a single workspace."""
+    user_id = await _get_user_id(request)
+    if not user_id:
+        return {}
+    ws = await Workspace.get_by_path(user_id, path)
+    if not ws:
+        return {}
+    return {
+        "name": ws.name,
+        "path": ws.path,
+        **ws.data,
+    }
+
+
+@router.put("/workspace")
+async def put_workspace(request: Request, path: str = Query(...)):
+    """Create or update a single workspace's state."""
+    user_id = await _get_user_id(request)
+    if not user_id:
+        return {"status": "skipped"}
+    body = await request.json()
+    name = body.pop("name", path.rstrip("/").split("/")[-1] or path)
+    # Everything else is workspace data (groups, tabs, etc.)
+    await Workspace.upsert(user_id, path, name, body)
+
+    # Track in file-based history for welcome page
+    _track_history(path, name)
+
+    return {"status": "saved"}
+
+
+@router.delete("/workspace")
+async def delete_workspace(request: Request, path: str = Query(...)):
+    """Remove a workspace."""
+    user_id = await _get_user_id(request)
+    if not user_id:
+        return {"status": "skipped"}
+    await Workspace.delete_by_path(user_id, path)
+    return {"status": "deleted"}
+
+
+# ── History tracking ─────────────────────────────────────────────
+
+def _track_history(path: str, name: str) -> None:
+    """Track workspace in file-based history for the welcome page."""
     history_file = DATA_DIR / "history.json"
     history: List[dict] = []
     if history_file.exists():
@@ -55,19 +124,14 @@ async def put_state(request: Request):
             history = []
 
     existing_paths = {h["path"] for h in history}
-    for ws in body.get("workspaces", []):
-        if ws.get("path") and ws["path"] not in existing_paths:
-            history.append({"name": ws.get("name", ""), "path": ws["path"]})
-            existing_paths.add(ws["path"])
+    if path and path not in existing_paths:
+        history.append({"name": name, "path": path})
 
     _ensure_dir()
     history_file.write_text(json.dumps(history, indent=2))
 
-    # Save state to DB
-    user_id = await get_or_create_user(username)
-    await UserStates.save_data(user_id, body)
-    return {"status": "saved"}
 
+# ── Welcome ──────────────────────────────────────────────────────
 
 @router.get("/welcome")
 async def get_welcome(request: Request):
@@ -142,7 +206,6 @@ async def get_welcome(request: Request):
                 ["sysctl", "-n", "kern.boottime"],
                 capture_output=True, text=True, timeout=2,
             )
-            # Parse: { sec = 1234567890, usec = 0 } ...
             sec_str = result.stdout.split("sec =")[1].split(",")[0].strip()
             boot_time = int(sec_str)
             system["uptime_seconds"] = int(time.time() - boot_time)
@@ -159,7 +222,7 @@ async def get_welcome(request: Request):
     except Exception:
         pass
 
-    # CPU usage percentage (Linux only — macOS `top -l 1` is too slow)
+    # CPU usage
     try:
         import subprocess
         if platform.system() == "Linux":
@@ -171,7 +234,6 @@ async def get_welcome(request: Request):
             if total > 0:
                 system["cpu_usage"] = round(100.0 * (1.0 - idle / total), 1)
         elif platform.system() == "Darwin":
-            # Use load avg as proxy — already collected above
             load = system.get("load_avg")
             cpus = system.get("cpu_count", 1)
             if load and cpus:
@@ -217,7 +279,7 @@ async def get_welcome(request: Request):
                 ["ps", "-Arco", "pid,pcpu,pmem,comm"],
                 capture_output=True, text=True, timeout=3,
             )
-            for line in result.stdout.strip().split("\n")[1:6]:  # Top 5
+            for line in result.stdout.strip().split("\n")[1:6]:
                 parts = line.split(None, 3)
                 if len(parts) >= 4:
                     processes.append({
@@ -231,7 +293,7 @@ async def get_welcome(request: Request):
                 ["ps", "-eo", "pid,pcpu,pmem,comm", "--sort=-pcpu", "--no-headers"],
                 capture_output=True, text=True, timeout=3,
             )
-            for line in result.stdout.strip().split("\n")[:5]:  # Top 5
+            for line in result.stdout.strip().split("\n")[:5]:
                 parts = line.split(None, 3)
                 if len(parts) >= 4:
                     processes.append({
@@ -243,7 +305,7 @@ async def get_welcome(request: Request):
     except Exception:
         pass
 
-    # Suggested directories (only return ones that exist)
+    # Suggested directories
     home = str(Path.home())
     candidates = [
         home,
@@ -264,10 +326,7 @@ async def get_welcome(request: Request):
     for c in candidates:
         p = Path(c)
         if p.exists() and p.is_dir() and c not in seen:
-            suggestions.append({
-                "name": p.name or c,
-                "path": c,
-            })
+            suggestions.append({"name": p.name or c, "path": c})
             seen.add(c)
 
     # Recent workspace history
@@ -279,15 +338,12 @@ async def get_welcome(request: Request):
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Filter out workspaces that are currently active
-    auth = getattr(request.state, "auth", None)
-    username = auth.username if auth else None
+    # Filter out workspaces that are currently active for this user
+    user_id = await _get_user_id(request)
     active_paths: set = set()
-    if username:
-        user_id = await get_or_create_user(username)
-        data = await UserStates.get_data(user_id)
-        if data:
-            active_paths = {ws.get("path") for ws in data.get("workspaces", [])}
+    if user_id:
+        active_workspaces = await Workspace.get_by_user(user_id)
+        active_paths = {ws.path for ws in active_workspaces}
     recent = [h for h in history if h.get("path") not in active_paths]
 
     return {

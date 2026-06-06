@@ -255,10 +255,12 @@ async def delete_chat(chat_id: str, request: Request):
 # ── Send a message ──────────────────────────────────────────
 
 class SendMessageRequest(BaseModel):
-    content: str
+    content: str = ""
     model_id: str
     workspace: str
     chat_id: Optional[str] = None
+    parent_id: Optional[str] = None
+    regeneration_prompt: Optional[str] = None
     files: List[str] = []
     params: dict = {}
 
@@ -296,31 +298,35 @@ async def send_message(body: SendMessageRequest, request: Request):
     # Resolve connection for model
     connection, bare_model = await _resolve_connection(body.model_id, request.app.state)
 
-    # Find parent (last message in chat)
-    existing = await ChatMessage.get_all_by_chat(chat.id)
-    parent_id = existing[-1].id if existing else None
+    # Detect regeneration by checking parent message role
+    parent_msg = await ChatMessage.get_by_id(body.parent_id) if body.parent_id else None
 
-    # Create user message
-    user_msg = await ChatMessage.create(
-        chat_id=chat.id,
-        role="user",
-        content=body.content,
-        parent_id=parent_id,
-        created_at=now_ms(),
-    )
+    if parent_msg and parent_msg.role == "user":
+        # Regeneration — create assistant as sibling of existing response
+        assistant_parent = body.parent_id
+    else:
+        # Normal send — create user message first
+        user_msg = await ChatMessage.create(
+            chat_id=chat.id,
+            role="user",
+            content=body.content,
+            parent_id=body.parent_id,
+            created_at=now_ms(),
+        )
+        assistant_parent = user_msg.id
 
     # Create empty assistant message
     assistant_msg = await ChatMessage.create(
         chat_id=chat.id,
         role="assistant",
         content="",
-        parent_id=user_msg.id,
+        parent_id=assistant_parent,
         model=body.model_id,
         done=False,
         created_at=now_ms(),
     )
 
-    # Update chat pointer
+    # Update chat pointer to new leaf
     await Chat.update_current_message(chat.id, assistant_msg.id, now_ms())
 
     # Start background task (export_chat_to_file runs after task completes)
@@ -332,6 +338,7 @@ async def send_message(body: SendMessageRequest, request: Request):
         connection=connection,
         workspace=body.workspace,
         model=bare_model,
+        regeneration_prompt=body.regeneration_prompt,
     )
 
     return {"chat_id": chat.id, "message_id": assistant_msg.id}
@@ -422,9 +429,98 @@ async def cancel_task_endpoint(
         raise HTTPException(404, "chat not found")
 
     from cptr.utils.chat_task import cancel_task
-    await cancel_task(message_id)
+    found = await cancel_task(message_id)
+
+    if not found:
+        # Task already exited (e.g., waiting for tool approval) but message
+        # may still be marked done=False — force-finalize it.
+        msg = await ChatMessage.get_by_id(message_id)
+        if msg and not msg.done:
+            output = msg.output or []
+            for item in output:
+                if item.get("type") == "function_call" and item.get("status") == "pending":
+                    item["status"] = "rejected"
+            await ChatMessage.update(message_id, output=output, done=True)
+
     return {"ok": True}
 
+
+# ── Update current branch pointer ──────────────────────────
+
+class UpdateCurrentRequest(BaseModel):
+    message_id: str
+
+
+@router.post("/{chat_id}/current")
+async def update_current(
+    chat_id: str, body: UpdateCurrentRequest, request: Request
+):
+    """Set current_message_id (the active branch leaf)."""
+    user_id = _get_user(request)
+    chat = await Chat.get_by_id(chat_id)
+    if not chat or chat.user_id != user_id:
+        raise HTTPException(404, "chat not found")
+    await Chat.update_current_message(chat_id, body.message_id, now_ms())
+    return {"ok": True}
+
+
+# ── Update message content / output ────────────────────────
+
+class UpdateMessageRequest(BaseModel):
+    content: Optional[str] = None
+    output: Optional[list] = None
+
+
+@router.patch("/{chat_id}/messages/{message_id}")
+async def update_message(
+    chat_id: str, message_id: str, body: UpdateMessageRequest, request: Request
+):
+    """Edit a message's content or output in-place."""
+    user_id = _get_user(request)
+    chat = await Chat.get_by_id(chat_id)
+    if not chat or chat.user_id != user_id:
+        raise HTTPException(404, "chat not found")
+
+    updates = {}
+    if body.content is not None:
+        updates["content"] = body.content
+    if body.output is not None:
+        updates["output"] = body.output
+    if updates:
+        await ChatMessage.update(message_id, **updates)
+    return {"ok": True}
+
+
+# ── Create message directly (no task) ──────────────────────
+
+class CreateMessageRequest(BaseModel):
+    parent_id: Optional[str] = None
+    role: str
+    content: str
+    output: Optional[list] = None
+
+
+@router.post("/{chat_id}/messages")
+async def create_message_endpoint(
+    chat_id: str, body: CreateMessageRequest, request: Request
+):
+    """Create a message without starting a task (for Save As Copy)."""
+    user_id = _get_user(request)
+    chat = await Chat.get_by_id(chat_id)
+    if not chat or chat.user_id != user_id:
+        raise HTTPException(404, "chat not found")
+
+    msg = await ChatMessage.create(
+        chat_id=chat_id,
+        role=body.role,
+        content=body.content,
+        parent_id=body.parent_id,
+        output=body.output,
+        done=True,
+        created_at=now_ms(),
+    )
+    await Chat.update_current_message(chat_id, msg.id, now_ms())
+    return {"ok": True, "message_id": msg.id}
 
 
 async def _resolve_connection(model_id: str, app_state=None) -> tuple[dict, str]:

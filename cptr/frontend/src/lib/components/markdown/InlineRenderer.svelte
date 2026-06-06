@@ -7,7 +7,6 @@
 
 	let { items }: Props = $props();
 
-	// Decode HTML entities (marked keeps them encoded, Svelte would double-escape)
 	let decoder: HTMLTextAreaElement | undefined;
 	function decodeEntities(text: string): string {
 		if (typeof document === 'undefined') return text;
@@ -17,7 +16,6 @@
 		return decoder.value;
 	}
 
-	// Parse wikilink HTML tag
 	const WIKILINK_HTML_RE = /^<wikilink data-target="([^"]+)">([^<]+)<\/wikilink>$/;
 
 	function parseWikilink(raw: string): { target: string; label: string } | null {
@@ -30,7 +28,6 @@
 {#each items as item}
 	{#if item.type === 'text'}
 		{#if 'tokens' in item && item.tokens}
-			<!-- Text node with nested tokens (e.g. inside list items) -->
 			<svelte:self items={item.tokens} />
 		{:else}
 			{decodeEntities(('text' in item) ? item.text : item.raw)}
@@ -46,10 +43,17 @@
 		<del>{#if 'tokens' in item && item.tokens}<svelte:self items={item.tokens} />{:else}{item.raw}{/if}</del>
 
 	{:else if item.type === 'codespan'}
-		<code class="md-code-inline">{('text' in item) ? item.text : item.raw}</code>
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<code
+			class="codespan cursor-pointer"
+			onclick={() => {
+				const text = ('text' in item) ? item.text : item.raw;
+				navigator.clipboard.writeText(text);
+			}}
+		>{('text' in item) ? item.text : item.raw}</code>
 
 	{:else if item.type === 'link'}
-		<a href={('href' in item) ? item.href : '#'} target="_blank" rel="noopener noreferrer" class="md-link">
+		<a href={('href' in item) ? item.href : '#'} target="_blank" rel="noopener noreferrer">
 			{#if 'tokens' in item && item.tokens}
 				<svelte:self items={item.tokens} />
 			{:else}
@@ -62,7 +66,7 @@
 			src={('href' in item) ? item.href : ''}
 			alt={('text' in item) ? item.text : ''}
 			title={('title' in item) ? item.title : undefined}
-			class="md-image"
+			loading="lazy"
 		/>
 
 	{:else if item.type === 'br'}
@@ -74,10 +78,7 @@
 	{:else if item.type === 'html'}
 		{@const wl = parseWikilink(item.raw)}
 		{#if wl}
-			<span class="md-wikilink" title="Link to {wl.target}">{wl.label}</span>
-		{:else}
-			<!-- Skip other inline HTML for safety -->
+			<span class="text-blue-500 dark:text-blue-400 bg-blue-500/8 dark:bg-blue-400/10 rounded px-1 cursor-pointer hover:underline transition-colors" title="Link to {wl.target}">{wl.label}</span>
 		{/if}
 	{/if}
 {/each}
-

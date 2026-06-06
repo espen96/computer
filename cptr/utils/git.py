@@ -310,7 +310,29 @@ async def branches(root: str) -> dict[str, Any]:
         if name and "/" in name and name != "origin/HEAD" and "->" not in name:
             remote.append(name)
 
-    return {"current": current, "local": local, "remote": remote}
+    # Build a merged branch list (GitHub Desktop style).
+    # Remote-only branches are shown without the "origin/" prefix.
+    local_set = set(local)
+    all_branches: list[dict[str, Any]] = []
+    for name in local:
+        all_branches.append({
+            "name": name,
+            "is_current": name == current,
+            "is_local": True,
+            "is_remote": any(r.endswith(f"/{name}") for r in remote),
+        })
+    for rname in remote:
+        # Strip first remote prefix (e.g. "origin/feature-x" -> "feature-x")
+        short = rname.split("/", 1)[1] if "/" in rname else rname
+        if short not in local_set:
+            all_branches.append({
+                "name": short,
+                "is_current": False,
+                "is_local": False,
+                "is_remote": True,
+            })
+
+    return {"current": current, "local": local, "remote": remote, "all": all_branches}
 
 
 async def checkout(root: str, branch: str) -> None:

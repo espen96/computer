@@ -1,10 +1,10 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import {
-		workspaces,
-		activeWorkspaceId,
-		setActiveWorkspace,
+		workspaceList,
+		currentWorkspace,
 		removeWorkspace,
-		reorderWorkspaces,
 		sidebarOpen,
 	} from '$lib/stores';
 	import Sortable from 'sortablejs';
@@ -25,28 +25,34 @@
 	let showSettings = $state(false);
 	let settingsTab = $state<'general' | 'account' | 'about'>('general');
 	let showAdmin = $state(false);
-	let wsMenuId = $state<string | null>(null);
+	let wsMenuPath = $state<string | null>(null);
 	let wsMenuAnchor = $state<HTMLElement | null>(null);
 	let appVersion = $state('');
 	let menuButtonEl: HTMLButtonElement | undefined = $state();
 	let wsListEl: HTMLDivElement | undefined = $state();
-	let sortable: Sortable | null = null;
 
-	function handleWorkspaceClick(id: string) {
-		setActiveWorkspace(id);
+	// Current workspace path from URL
+	const currentPath = $derived($page.url.searchParams.get('workspace'));
+
+	function handleWorkspaceClick(e: MouseEvent, path: string) {
+		// Let Cmd/Ctrl+click open in new tab naturally (it's an <a>)
+		if (e.metaKey || e.ctrlKey) return;
+		e.preventDefault();
+		goto(`/?workspace=${encodeURIComponent(path)}`);
 		if (typeof window !== 'undefined' && window.innerWidth < 768) {
 			sidebarOpen.set(false);
 		}
 	}
 
-	function openWsMenu(e: MouseEvent, id: string) {
+	function openWsMenu(e: MouseEvent, path: string) {
 		e.stopPropagation();
+		e.preventDefault();
 		wsMenuAnchor = e.currentTarget as HTMLElement;
-		wsMenuId = id;
+		wsMenuPath = path;
 	}
 
 	function closeWsMenu() {
-		wsMenuId = null;
+		wsMenuPath = null;
 		wsMenuAnchor = null;
 	}
 
@@ -63,28 +69,19 @@
 		clearSession();
 	}
 
+	async function handleRemoveWorkspace(path: string) {
+		closeWsMenu();
+		await removeWorkspace(path);
+		// If we removed the workspace we're currently viewing, go home
+		if (currentPath === path) {
+			goto('/');
+		}
+	}
+
 	onMount(() => {
 		getWelcome()
 			.then(d => { appVersion = d.version || ''; })
 			.catch(() => {});
-
-		if (wsListEl) {
-			sortable = Sortable.create(wsListEl, {
-				animation: 150,
-				ghostClass: 'opacity-30',
-				dragClass: 'cursor-grabbing',
-				direction: 'vertical',
-				onEnd: (evt) => {
-					if (evt.oldIndex != null && evt.newIndex != null && evt.oldIndex !== evt.newIndex) {
-						reorderWorkspaces(evt.oldIndex, evt.newIndex);
-					}
-				},
-			});
-		}
-	});
-
-	onDestroy(() => {
-		sortable?.destroy();
 	});
 </script>
 
@@ -94,10 +91,11 @@
 	<aside class="sidebar">
 		<!-- Logo header with collapse button -->
 		<div class="flex items-center justify-between h-9 pl-3.5 pr-1.5 shrink-0 border-b border-gray-200 dark:border-white/6">
-			<button
+			<a
+				href="/"
 				class="text-xs font-semibold tracking-tight text-gray-900 dark:text-white"
-				onclick={() => { activeWorkspaceId.set(null); if (typeof window !== 'undefined' && window.innerWidth < 768) sidebarOpen.set(false); }}
-			>cptr</button>
+				onclick={(e) => { e.preventDefault(); goto('/'); if (typeof window !== 'undefined' && window.innerWidth < 768) sidebarOpen.set(false); }}
+			>cptr</a>
 			<button
 				class="flex items-center justify-center w-7 h-7 rounded-lg text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors duration-100"
 				onclick={() => sidebarOpen.set(false)}
@@ -123,13 +121,14 @@
 
 		<!-- Workspace list -->
 		<div bind:this={wsListEl} class="flex-1 overflow-y-auto px-1.5">
-			{#each $workspaces as ws (ws.id)}
-				<button
-					class="group flex items-center gap-1.5 w-full h-7 px-2 rounded-lg text-xs font-medium transition-colors duration-100 cursor-grab active:cursor-grabbing
-						{ws.id === $activeWorkspaceId
+			{#each $workspaceList as ws (ws.path)}
+				<a
+					href="/?workspace={encodeURIComponent(ws.path)}"
+					class="group flex items-center gap-1.5 w-full h-7 px-2 rounded-lg text-xs font-medium transition-colors duration-100 no-underline
+						{ws.path === currentPath
 							? 'bg-gray-200 text-gray-900 dark:bg-white/8 dark:text-white'
 							: 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
-					onclick={() => handleWorkspaceClick(ws.id)}
+					onclick={(e) => handleWorkspaceClick(e, ws.path)}
 				>
 					<Icon name="folder" size={14} />
 					<span class="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap">{ws.name}</span>
@@ -137,15 +136,15 @@
 						class="flex items-center justify-center w-5 h-5 rounded shrink-0 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-gray-300 dark:hover:bg-white/10 transition-all duration-75"
 						role="button"
 						tabindex="-1"
-						onclick={(e) => openWsMenu(e, ws.id)}
+						onclick={(e) => openWsMenu(e, ws.path)}
 						aria-label={$t('sidebar.workspaceOptions')}
 					>
 						<Icon name="three-dots" size={11} />
 					</span>
-				</button>
+				</a>
 			{/each}
 
-			{#if $workspaces.length === 0}
+			{#if $workspaceList.length === 0}
 				<div class="flex flex-col items-center justify-center py-12">
 					<p class="text-xs text-gray-400 dark:text-gray-600">{$t('sidebar.noWorkspaces')}</p>
 				</div>
@@ -194,11 +193,11 @@
 	<DirectoryPicker onclose={() => showPicker = false} />
 {/if}
 
-{#if wsMenuId && wsMenuAnchor}
+{#if wsMenuPath && wsMenuAnchor}
 	<DropdownMenu
 		anchor={wsMenuAnchor}
 		items={[
-			{ label: $t('sidebar.remove'), icon: 'xmark', onclick: () => removeWorkspace(wsMenuId!) },
+			{ label: $t('sidebar.remove'), icon: 'xmark', onclick: () => handleRemoveWorkspace(wsMenuPath!) },
 		]}
 		onclose={closeWsMenu}
 	/>

@@ -6,6 +6,9 @@ import { fetchJSON } from '$lib/apis';
 
 export const chatEnabled = writable<boolean>(false);
 
+/** Set of tab IDs whose chat is currently streaming (assistant message not done). */
+export const streamingChatTabs = writable<Set<string>>(new Set());
+
 export interface ChatModel {
 	id: string;
 	name: string;

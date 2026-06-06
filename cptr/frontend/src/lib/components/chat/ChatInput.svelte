@@ -1,5 +1,16 @@
 <script lang="ts">
-	import { chatModels } from '$lib/stores/chat';
+	import { onMount, onDestroy } from 'svelte';
+	import { Editor } from '@tiptap/core';
+	import StarterKit from '@tiptap/starter-kit';
+	import { Markdown } from '@tiptap/markdown';
+	import Placeholder from '@tiptap/extension-placeholder';
+	import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+	import { all, createLowlight } from 'lowlight';
+
+	import ModelSelector from './ModelSelector.svelte';
+	import SendButton from './SendButton.svelte';
+	import AttachButton from './AttachButton.svelte';
+	import DictateButton from './DictateButton.svelte';
 
 	interface Props {
 		inputText: string;
@@ -20,75 +31,201 @@
 		oncancel,
 	}: Props = $props();
 
-	let textareaEl: HTMLTextAreaElement | undefined = $state();
+	let editorEl: HTMLDivElement | undefined = $state();
+	let editor: Editor | null = $state(null);
 
-	function autoResize() {
-		if (!textareaEl) return;
-		textareaEl.style.height = 'auto';
-		textareaEl.style.height = Math.min(textareaEl.scrollHeight, 200) + 'px';
-	}
+	// ── Lowlight setup ──────────────────────────────
+	const lowlight = createLowlight(all);
+	const _origHighlight = lowlight.highlight.bind(lowlight);
+	lowlight.highlight = (lang: string, value: string, opts?: Record<string, unknown>) => {
+		if (!lowlight.registered(lang)) return lowlight.highlightAuto(value);
+		return _origHighlight(lang, value, opts);
+	};
 
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter' && !e.shiftKey) {
-			e.preventDefault();
-			onsend();
+	// ── Editor lifecycle ────────────────────────────
+	onMount(() => {
+		if (!editorEl) return;
+
+		editor = new Editor({
+			element: editorEl,
+			extensions: [
+				StarterKit.configure({
+					codeBlock: false,
+					heading: { levels: [1, 2, 3] },
+				}),
+				Markdown,
+				Placeholder.configure({ placeholder }),
+				CodeBlockLowlight.configure({ lowlight }),
+			],
+			content: inputText || '',
+			contentType: inputText ? 'markdown' : undefined,
+			autofocus: true,
+			editorProps: {
+				attributes: {
+					class: 'chat-prosemirror',
+					spellcheck: 'true',
+				},
+				handleKeyDown: (view, event) => {
+					if (event.key === 'Enter' && !event.shiftKey) {
+						const { state } = view;
+						const head = state.selection.$head;
+
+						let inside = false;
+						for (let d = head.depth; d > 0; d--) {
+							const name = head.node(d).type.name;
+							if (['codeBlock', 'bulletList', 'orderedList', 'listItem'].includes(name)) {
+								inside = true;
+								break;
+							}
+						}
+						if (!inside) {
+							event.preventDefault();
+							onsend();
+							return true;
+						}
+					}
+					return false;
+				},
+			},
+			onUpdate: ({ editor: e }) => {
+				inputText = (e as any).getMarkdown() || '';
+			},
+		});
+	});
+
+	onDestroy(() => {
+		editor?.destroy();
+		editor = null;
+	});
+
+	// Sync external inputText changes (e.g. cleared after send)
+	$effect(() => {
+		if (!editor || editor.isDestroyed) return;
+		const editorMd = (editor as any).getMarkdown() || '';
+		if (inputText !== editorMd) {
+			if (inputText === '') {
+				editor.commands.clearContent();
+			} else {
+				editor.commands.setContent(inputText);
+			}
 		}
-	}
+	});
 
 	export function focus() {
-		textareaEl?.focus();
+		editor?.commands.focus();
 	}
 
 	export function resetHeight() {
-		if (textareaEl) textareaEl.style.height = 'auto';
+		// TipTap auto-sizes; no-op kept for API compat
 	}
 
 	const canSend = $derived(inputText.trim() && selectedModel && !sending);
 </script>
 
-<div>
-	<div class="bg-gray-50 dark:bg-white/4 rounded-xl border border-gray-200 dark:border-white/8 focus-within:border-gray-300 dark:focus-within:border-white/15 transition-colors duration-100">
-		<textarea
-			bind:this={textareaEl}
-			bind:value={inputText}
-			{placeholder}
-			rows="1"
-			onkeydown={handleKeydown}
-			oninput={autoResize}
-			disabled={sending}
-			class="block w-full bg-transparent text-[13px] text-gray-900 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-600 outline-none resize-none px-3.5 py-2.5 max-h-[200px]"
-		></textarea>
-		<div class="flex items-center justify-between px-2.5 pb-2">
-			<select bind:value={selectedModel}
-				class="bg-transparent text-[11px] text-gray-400 dark:text-gray-600 outline-none cursor-pointer hover:text-gray-600 dark:hover:text-gray-400 transition-colors duration-100">
-				{#each $chatModels as model}
-					<option value={model.id}>{model.name}</option>
-				{/each}
-			</select>
-			{#if streaming && oncancel}
-				<button
-					class="flex items-center justify-center w-7 h-7 rounded-lg shrink-0 bg-gray-900 dark:bg-white text-white dark:text-black hover:bg-gray-700 dark:hover:bg-gray-200 transition-colors duration-100"
-					onclick={oncancel}
-				>
-					<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-						<rect x="4" y="4" width="16" height="16" rx="2" />
-					</svg>
-				</button>
-			{:else}
-				<button
-					class="flex items-center justify-center w-7 h-7 rounded-lg shrink-0 transition-colors duration-100
-						{canSend
-							? 'bg-gray-900 dark:bg-white text-white dark:text-black hover:bg-gray-700 dark:hover:bg-gray-200'
-							: 'bg-gray-200 dark:bg-white/8 text-gray-400 dark:text-gray-600 cursor-default'}"
-					onclick={onsend}
-					disabled={!canSend}
-				>
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-						<line x1="12" y1="19" x2="12" y2="5" />
-						<polyline points="5 12 12 5 19 12" />
-					</svg>
-				</button>
-			{/if}
+<div class="relative">
+	<div class="rounded-3xl shadow-lg border border-gray-100/40 dark:border-white/4 focus-within:border-gray-200/50 focus-within:dark:border-white/8 transition px-1 bg-white dark:bg-gray-500/5">
+		<!-- Editor area -->
+		<div class="px-2.5">
+			<div
+				bind:this={editorEl}
+				class="chat-editor-mount scrollbar-hidden"
+				class:opacity-50={sending}
+				class:pointer-events-none={sending}
+			></div>
+		</div>
+
+		<!-- Toolbar — stopPropagation prevents TipTap from stealing focus -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="flex items-center justify-between mt-0.5 mb-2.5 mx-0.5"
+			onmousedown={(e) => e.stopPropagation()}
+		>
+			<div class="ml-0.5 self-end flex items-center">
+				<AttachButton onfiles={(files) => { /* TODO: handle file uploads */ }} />
+			</div>
+			<div class="self-end mr-1 flex items-center gap-2">
+				<ModelSelector bind:selectedModel />
+				<DictateButton ontext={(text) => { inputText += text; }} />
+				<SendButton {canSend} {streaming} {onsend} {oncancel} />
+			</div>
 		</div>
 	</div>
 </div>
+
+<style>
+	@reference "../../../app.css";
+
+	/* ── ProseMirror editor ───────────────────────── */
+
+	.chat-editor-mount :global(.chat-prosemirror) {
+		@apply pt-2.5 pb-2 px-1 min-h-6 max-h-96 overflow-y-auto text-sm leading-relaxed text-gray-900 dark:text-gray-100 outline-none break-words;
+	}
+
+	/* Placeholder */
+	.chat-editor-mount :global(.chat-prosemirror p.is-editor-empty:first-child::before) {
+		content: attr(data-placeholder);
+		@apply float-left text-gray-400 dark:text-gray-600 pointer-events-none h-0;
+	}
+
+	/* Paragraphs */
+	.chat-editor-mount :global(.chat-prosemirror p) {
+		@apply mb-1;
+	}
+	.chat-editor-mount :global(.chat-prosemirror p:last-child) {
+		@apply mb-0;
+	}
+
+	/* Lists */
+	.chat-editor-mount :global(.chat-prosemirror ul),
+	.chat-editor-mount :global(.chat-prosemirror ol) {
+		@apply mb-1 pl-4.5 text-sm;
+	}
+	.chat-editor-mount :global(.chat-prosemirror li) {
+		@apply my-0.5;
+	}
+	.chat-editor-mount :global(.chat-prosemirror li > p) {
+		@apply mb-0.5;
+	}
+
+	/* Inline code */
+	.chat-editor-mount :global(.chat-prosemirror code) {
+		@apply bg-gray-100 dark:bg-white/8 rounded-sm px-1 py-px text-xs font-mono;
+	}
+
+	/* Code blocks */
+	.chat-editor-mount :global(.chat-prosemirror pre) {
+		@apply bg-gray-100 dark:bg-white/4 rounded-md px-3 py-2 overflow-x-auto my-1 text-xs font-mono;
+	}
+	.chat-editor-mount :global(.chat-prosemirror pre code) {
+		@apply bg-transparent p-0 rounded-none text-inherit;
+	}
+
+	/* Blockquote */
+	.chat-editor-mount :global(.chat-prosemirror blockquote) {
+		@apply my-1 py-0.5 pl-3 border-l-2 border-gray-300 dark:border-white/12 text-gray-500 dark:text-gray-400;
+	}
+
+	/* Strong */
+	.chat-editor-mount :global(.chat-prosemirror strong) {
+		@apply font-semibold;
+	}
+
+	/* Headings */
+	.chat-editor-mount :global(.chat-prosemirror h1) { @apply text-base font-semibold my-1; }
+	.chat-editor-mount :global(.chat-prosemirror h2) { @apply text-sm font-semibold my-1; }
+	.chat-editor-mount :global(.chat-prosemirror h3) { @apply text-[13px] font-semibold my-1; }
+
+	/* HR */
+	.chat-editor-mount :global(.chat-prosemirror hr) {
+		@apply border-none border-t border-gray-200 dark:border-white/8 my-2;
+	}
+
+	/* Syntax highlighting */
+	.chat-editor-mount :global(.hljs-keyword) { color: #c678dd; }
+	.chat-editor-mount :global(.hljs-string) { color: #98c379; }
+	.chat-editor-mount :global(.hljs-number) { color: #d19a66; }
+	.chat-editor-mount :global(.hljs-comment) { color: #5c6370; font-style: italic; }
+	.chat-editor-mount :global(.hljs-function) { color: #61afef; }
+	.chat-editor-mount :global(.hljs-title) { color: #61afef; }
+	.chat-editor-mount :global(.hljs-built_in) { color: #e5c07b; }
+</style>

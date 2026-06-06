@@ -389,29 +389,16 @@
 				{/if}
 
 				{#if branchData}
-					{#each branchData.local as b}
+					{#each (branchData.all ?? []) as b}
 						<button
 							class="flex items-center gap-1.5 w-full h-7 px-2.5 text-left transition-colors duration-75
-								{b === branchData.current ? 'bg-gray-50 dark:bg-white/4' : 'hover:bg-gray-50 dark:hover:bg-white/3'}"
-							onclick={() => switchBranch(b)}
+								{b.is_current ? 'bg-gray-50 dark:bg-white/4' : 'hover:bg-gray-50 dark:hover:bg-white/3'}"
+							onclick={() => switchBranch(b.name)}
 						>
-							<span class="w-3 shrink-0">{b === branchData.current ? '✓' : ''}</span>
-							<span class="text-xs text-gray-800 dark:text-gray-200 truncate">{b}</span>
+							<span class="w-3 shrink-0">{b.is_current ? '✓' : ''}</span>
+							<span class="text-xs text-gray-800 dark:text-gray-200 truncate">{b.name}</span>
 						</button>
 					{/each}
-					{#if branchData.remote.length}
-						<div class="h-px bg-gray-100 dark:bg-white/4"></div>
-						<div class="px-2.5 py-1 text-[10px] text-gray-400 dark:text-gray-600">{$t('git.remote')}</div>
-						{#each branchData.remote as b}
-							<button
-								class="flex items-center gap-1.5 w-full h-7 px-2.5 text-left hover:bg-gray-50 dark:hover:bg-white/3 transition-colors duration-75"
-								onclick={() => switchBranch(b)}
-							>
-								<span class="w-3 shrink-0"></span>
-								<span class="text-xs text-gray-500 dark:text-gray-400 truncate">{b}</span>
-							</button>
-						{/each}
-					{/if}
 				{:else}
 					<div class="flex items-center justify-center h-10">
 						<div class="w-3.5 h-3.5 border border-gray-300 dark:border-gray-600 border-t-gray-600 dark:border-t-gray-300 rounded-full animate-spin"></div>

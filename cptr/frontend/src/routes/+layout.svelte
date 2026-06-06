@@ -10,7 +10,7 @@
 	import QuickOpen from '$lib/components/QuickOpen.svelte';
 	import AuthScreen from '$lib/components/AuthScreen.svelte';
 	import { Toaster } from 'svelte-sonner';
-	import { activeTab, activeWorkspace, stateLoaded, loadStateFromServer, gitReviewOpen, isGitRepo, splitActive, splitCurrentTab, closeGroup } from '$lib/stores';
+	import { activeTab, currentWorkspace, stateLoaded, initState, gitReviewOpen, isGitRepo, splitActive, splitCurrentTab, closeGroup } from '$lib/stores';
 	import { systemEvents } from '$lib/stores/systemEvents.svelte';
 	import { socketStore } from '$lib/stores/socket.svelte';
 	import { setSession } from '$lib/session';
@@ -76,7 +76,10 @@
 			const token = params.get('token');
 			if (token) {
 				startupToken = token;
-				window.history.replaceState({}, '', window.location.pathname);
+				// Remove token from URL but preserve workspace param
+				const url = new URL(window.location.href);
+				url.searchParams.delete('token');
+				window.history.replaceState({}, '', url.toString());
 			}
 
 			const auth = await getSession();
@@ -90,7 +93,7 @@
 					profile_image_url: auth.profile_image_url,
 				});
 				authState = 'authenticated';
-				loadStateFromServer();
+				initState();
 				refreshChatState();
 			} else {
 				const cfg = await getConfig();
@@ -100,7 +103,7 @@
 			}
 		} catch {
 			authState = 'authenticated';
-			loadStateFromServer();
+			initState();
 		}
 	}
 
@@ -116,7 +119,7 @@
 					profile_image_url: auth.profile_image_url,
 				});
 				authState = 'authenticated';
-				loadStateFromServer();
+				initState();
 				refreshChatState();
 				return;
 			}
@@ -132,9 +135,9 @@
 		// Cmd/Ctrl+\ to toggle split view
 		if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
 			e.preventDefault();
-			if ($splitActive && $activeWorkspace) {
+			if ($splitActive && $currentWorkspace) {
 				// Close the non-active group
-				const otherGroup = $activeWorkspace.groups.find((g) => g.id !== $activeWorkspace!.activeGroupId);
+				const otherGroup = $currentWorkspace.groups.find((g) => g.id !== $currentWorkspace!.activeGroupId);
 				if (otherGroup) closeGroup(otherGroup.id);
 			} else {
 				splitCurrentTab();
@@ -144,7 +147,7 @@
 
 	// Connect system events when workspace is active
 	$effect(() => {
-		const ws = $activeWorkspace;
+		const ws = $currentWorkspace;
 		if (ws) {
 			systemEvents.connect(ws.fileBrowserCwd || ws.path);
 			socketStore.connect();
@@ -156,7 +159,7 @@
 
 	// Detect if workspace is a git repo
 	$effect(() => {
-		const ws = $activeWorkspace;
+		const ws = $currentWorkspace;
 		if (!ws) {
 			isGitRepo.set(false);
 			gitReviewOpen.set(false);
@@ -184,7 +187,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-	<title>cptr</title>
+	<title>{$currentWorkspace ? `${$currentWorkspace.name} / cptr` : 'cptr'}</title>
 	<meta name="description" content={$t('app.tagline')} />
 </svelte:head>
 
@@ -209,14 +212,14 @@
 		<Sidebar />
 
 		<div class="flex flex-col flex-1 min-w-0">
-			{#if !$activeWorkspace}
+			{#if !$currentWorkspace}
 				<Bar />
 			{/if}
 			<main class="relative flex-1 min-h-0 overflow-hidden">
 				{@render children()}
 			</main>
 
-			{#if $activeWorkspace && $isGitRepo && !$gitReviewOpen}
+			{#if $currentWorkspace && $isGitRepo && !$gitReviewOpen}
 				<GitBar />
 			{/if}
 

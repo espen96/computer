@@ -242,5 +242,20 @@
 	"system.memory": "Memory",
 	"system.disk": "Disk",
 	"system.cores": "{{count}} cores",
-	"system.process": "PROCESS"
+	"system.process": "PROCESS",
+
+	"admin.web": "Web",
+	"admin.webEnabled": "Enable web access",
+	"admin.webEnabledHint": "AI can search the web and fetch URLs.",
+	"admin.webDisabledHint": "Web search and URL fetching are disabled.",
+	"admin.webSearchProvider": "Search Provider",
+	"admin.webProviderAuto": "Auto",
+	"admin.webAutoHint": "Automatically selects the best available provider.",
+	"admin.webExaKey": "Exa API Key",
+	"admin.webExaHint": "Get your API key at exa.ai",
+	"admin.webTavilyKey": "Tavily API Key",
+	"admin.webTavilyHint": "Get your API key at tavily.com",
+	"admin.webBraveKey": "Brave API Key",
+	"admin.webBraveHint": "Get your API key at brave.com/search/api",
+	"admin.webDuckDuckGoNote": "DuckDuckGo requires no API key (fallback)."
 }

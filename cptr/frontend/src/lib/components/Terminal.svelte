@@ -4,14 +4,35 @@
 	import { FitAddon } from '@xterm/addon-fit';
 	import { WebglAddon } from '@xterm/addon-webgl';
 
-	// Binary WebSocket protocol (industry standard, same as ttyd/GoTTY):
-	// Byte 0 = message type, rest = payload.
-	// Client → Server:  0x00 + raw input bytes  |  0x02 + JSON resize
-	// Server → Client:  raw PTY output bytes (no prefix needed)
+	// ── Compact binary WebSocket protocol ─────────────────────
+	// Client → Server:  byte 0 = type, rest = payload
+	//   0x00 + raw input bytes (microtask-batched for throughput)
+	//   0x02 + uint16 cols + uint16 rows, big-endian (5 bytes total)
+	// Server → Client:  raw PTY output bytes (no prefix)
 	const MSG_INPUT  = 0;
 	const MSG_RESIZE = 2;
 
 	const textEncoder = new TextEncoder();
+
+	// ── Pre-allocated send buffer ──────────────────────────────
+	// Single 4 KB buffer for all input.  Avoids per-keystroke allocation
+	// and per-flush Uint8Array creation.  Microtask-flushed for batching.
+	const INPUT_BUF_CAP = 4096;
+	const inputBuf = new Uint8Array(INPUT_BUF_CAP);
+	let inputBufLen = 0;           // bytes written after the type prefix
+	let inputFlushScheduled = false;
+	inputBuf[0] = MSG_INPUT;       // prefix is constant
+
+	function flushInput() {
+		inputFlushScheduled = false;
+		if (!inputBufLen || ws?.readyState !== WebSocket.OPEN) {
+			inputBufLen = 0;
+			return;
+		}
+		// subarray() creates a zero-copy view; browser copies internally for send
+		ws!.send(inputBuf.subarray(0, 1 + inputBufLen));
+		inputBufLen = 0;
+	}
 
 	interface Props {
 		sessionId: string;
@@ -76,25 +97,39 @@
 		selectionBackground: 'rgba(0, 0, 0, 0.15)',
 	};
 
-	// Send input to PTY via WebSocket (binary prefix protocol)
+	// Send input to PTY via WebSocket (binary prefix protocol).
+	// Writes directly into the pre-allocated buffer — zero allocation
+	// for the common single-ASCII-keystroke path.
 	function sendInput(data: string) {
-		if (ws?.readyState === WebSocket.OPEN) {
+		if (ws?.readyState !== WebSocket.OPEN) return;
+
+		if (data.length === 1 && data.charCodeAt(0) < 128) {
+			// Fast path: single ASCII byte — no TextEncoder, no allocation
+			if (1 + inputBufLen + 1 > INPUT_BUF_CAP) flushInput();
+			inputBuf[1 + inputBufLen++] = data.charCodeAt(0);
+		} else {
 			const encoded = textEncoder.encode(data);
-			const buf = new Uint8Array(1 + encoded.length);
-			buf[0] = MSG_INPUT;
-			buf.set(encoded, 1);
-			ws.send(buf.buffer);
+			if (1 + inputBufLen + encoded.length > INPUT_BUF_CAP) flushInput();
+			inputBuf.set(encoded, 1 + inputBufLen);
+			inputBufLen += encoded.length;
+		}
+
+		if (!inputFlushScheduled) {
+			inputFlushScheduled = true;
+			queueMicrotask(flushInput);
 		}
 	}
 
+	// Pre-allocated 5-byte resize buffer — reused on every resize event
+	const resizeBuf = new ArrayBuffer(5);
+	const resizeView = new DataView(resizeBuf);
+	resizeView.setUint8(0, MSG_RESIZE);
+
 	function sendResize(cols: number, rows: number) {
-		if (ws?.readyState === WebSocket.OPEN) {
-			const payload = textEncoder.encode(JSON.stringify({ cols, rows }));
-			const buf = new Uint8Array(1 + payload.length);
-			buf[0] = MSG_RESIZE;
-			buf.set(payload, 1);
-			ws.send(buf.buffer);
-		}
+		if (ws?.readyState !== WebSocket.OPEN) return;
+		resizeView.setUint16(1, cols, false);
+		resizeView.setUint16(3, rows, false);
+		ws!.send(resizeBuf);
 	}
 
 	onMount(() => {
@@ -305,12 +340,9 @@
 		};
 
 		ws.onmessage = (event) => {
-			// Server sends raw PTY output — write directly to terminal
-			if (event.data instanceof ArrayBuffer) {
-				term?.write(new Uint8Array(event.data));
-			} else {
-				term?.write(event.data);
-			}
+			// binaryType='arraybuffer' guarantees ArrayBuffer — write
+			// directly with a Uint8Array view (zero-copy wrapper)
+			term?.write(new Uint8Array(event.data as ArrayBuffer));
 		};
 
 		ws.onclose = (e) => {

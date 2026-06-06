@@ -49,7 +49,9 @@ class TerminalSession:
             return b""
         if data:
             self._scrollback.extend(data)
-            if len(self._scrollback) > SCROLLBACK_SIZE:
+            # Trim at 2× cap to amortize the cost — halves the number of
+            # 64 KB memcpy operations during high-throughput output.
+            if len(self._scrollback) > SCROLLBACK_SIZE * 2:
                 self._scrollback = self._scrollback[-SCROLLBACK_SIZE:]
         return data
 

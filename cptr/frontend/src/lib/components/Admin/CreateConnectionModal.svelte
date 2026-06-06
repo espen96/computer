@@ -94,7 +94,7 @@
 		</datalist>
 
 		<label class="text-[10px] text-gray-400 dark:text-gray-600 mt-2">{$t('connections.apiKey')}</label>
-		<input type="password" placeholder="sk-..." bind:value={formApiKey} autocomplete="off"
+		<input type="password" placeholder="sk-..." bind:value={formApiKey} autocomplete="new-password"
 			class="block w-full bg-transparent text-[13px] text-gray-700 dark:text-gray-300 placeholder:text-gray-300 dark:placeholder:text-gray-700 outline-none py-0.5 font-mono" />
 
 		<label class="text-[10px] text-gray-400 dark:text-gray-600 mt-2">{$t('connections.prefixId')}</label>

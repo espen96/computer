@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import select
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -60,10 +59,11 @@ async def delete_session(session_id: str):
 async def terminal_ws(websocket: WebSocket, session_id: str):
     """WebSocket endpoint for terminal I/O.
 
-    Binary protocol (same as ttyd/GoTTY):
+    Binary protocol (compact, ttyd-inspired):
     Client → Server:  byte[0] = type, byte[1:] = payload
-        0x00 + raw input bytes
-        0x02 + JSON resize {"cols": N, "rows": N}
+        0x00 + raw input bytes (microtask-batched by frontend)
+        0x02 + uint16 cols + uint16 rows (big-endian, 4 bytes)
+              OR JSON {"cols": N, "rows": N} (legacy fallback)
     Server → Client:  raw PTY output bytes (no prefix)
     """
     # Auth check for WebSocket (middleware doesn't cover WebSocket upgrades)
@@ -96,45 +96,58 @@ async def terminal_ws(websocket: WebSocket, session_id: str):
     async def read_pty():
         """Read from PTY and send to WebSocket.
 
-        Adaptive loop: reads continuously when data is available (no sleep),
-        only yields briefly when the PTY is idle. Batches consecutive reads
-        into a single WebSocket message to reduce frame overhead.
+        Event-driven via add_reader — wakes instantly when the PTY has
+        output (0 ms latency vs 5 ms poll-sleep).  Batch-reads all
+        available data into a single WebSocket frame to minimise framing
+        overhead.
         """
         try:
-            while True:
-                if not session.is_alive():
-                    logger.info(f"Session {session_id} process died, stopping read loop")
-                    break
-                try:
-                    if IS_WINDOWS:
+            if IS_WINDOWS:
+                # Windows ProactorEventLoop doesn't support add_reader;
+                # fall back to minimal-sleep polling.
+                while True:
+                    if not session.is_alive():
+                        logger.info(f"Session {session_id} died, stopping read")
+                        break
+                    try:
                         data = session.read(16384)
                         if data:
                             await websocket.send_bytes(data)
                         else:
                             await asyncio.sleep(0.005)
-                    else:
-                        r, _, _ = select.select([session._fd], [], [], 0)
-                        if r:
-                            # Data available — read and batch without sleeping
-                            chunks = []
-                            total = 0
-                            while total < 65536:
-                                r2, _, _ = select.select([session._fd], [], [], 0)
-                                if not r2:
-                                    break
-                                data = session.read(16384)
-                                if not data:
-                                    break
-                                chunks.append(data)
-                                total += len(data)
-                            if chunks:
-                                await websocket.send_bytes(b"".join(chunks))
-                        else:
-                            # No data — yield to event loop briefly
-                            await asyncio.sleep(0.005)
-                except (OSError, IOError) as e:
-                    logger.error(f"PTY read error for {session_id}: {e}")
-                    break
+                    except (OSError, IOError) as e:
+                        logger.error(f"PTY read error for {session_id}: {e}")
+                        break
+            else:
+                # Unix — event-driven, zero-latency
+                loop = asyncio.get_running_loop()
+                readable = asyncio.Event()
+                loop.add_reader(session._fd, readable.set)
+                try:
+                    while True:
+                        await readable.wait()
+                        readable.clear()
+
+                        # Batch-read all available data (up to 64 KB)
+                        chunks: list[bytes] = []
+                        total = 0
+                        while total < 65536:
+                            data = session.read(16384)
+                            if not data:
+                                break
+                            chunks.append(data)
+                            total += len(data)
+
+                        if chunks:
+                            await websocket.send_bytes(b"".join(chunks))
+                        elif not session.is_alive():
+                            logger.info(f"Session {session_id} died, stopping read")
+                            break
+                finally:
+                    try:
+                        loop.remove_reader(session._fd)
+                    except Exception:
+                        pass
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -154,11 +167,17 @@ async def terminal_ws(websocket: WebSocket, session_id: str):
             if msg_type == MSG_INPUT:
                 session.write(payload)
             elif msg_type == MSG_RESIZE:
-                import json as _json
                 try:
-                    resize_data = _json.loads(payload)
-                    cols = resize_data.get("cols", 80)
-                    rows = resize_data.get("rows", 24)
+                    if len(payload) == 4:
+                        # Compact binary: uint16 cols + uint16 rows (big-endian)
+                        cols = int.from_bytes(payload[0:2], "big")
+                        rows = int.from_bytes(payload[2:4], "big")
+                    else:
+                        # Legacy JSON fallback
+                        import json as _json
+                        resize_data = _json.loads(payload)
+                        cols = resize_data.get("cols", 80)
+                        rows = resize_data.get("rows", 24)
                     logger.debug(f"Resize {session_id}: {cols}x{rows}")
                     session.resize(rows, cols)
                 except (ValueError, KeyError) as e:

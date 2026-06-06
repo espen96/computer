@@ -55,11 +55,21 @@ export const sendMessage = (
 	modelId: string,
 	workspace: string,
 	chatId?: string,
-	params: { auto_approve_tools?: boolean } = {}
+	parentId?: string | null,
+	params: { auto_approve_tools?: boolean } = {},
+	regenerationPrompt?: string
 ) =>
 	fetchJSON<SendMessageResult>(
 		'/api/chats',
-		jsonBody({ content, model_id: modelId, workspace, chat_id: chatId, params })
+		jsonBody({
+			content,
+			model_id: modelId,
+			workspace,
+			chat_id: chatId,
+			parent_id: parentId ?? null,
+			regeneration_prompt: regenerationPrompt,
+			params
+		})
 	);
 
 export const approveToolCall = (
@@ -75,3 +85,32 @@ export const approveToolCall = (
 
 export const cancelTask = (chatId: string, messageId: string) =>
 	fetchJSON(`/api/chats/${chatId}/messages/${messageId}/cancel`, { method: 'POST' });
+
+export const updateCurrentMessage = (chatId: string, messageId: string) =>
+	fetchJSON<{ ok: boolean }>(
+		`/api/chats/${chatId}/current`,
+		jsonBody({ message_id: messageId })
+	);
+
+export const updateMessage = (
+	chatId: string,
+	messageId: string,
+	updates: { content?: string; output?: any[] }
+) =>
+	fetchJSON<{ ok: boolean }>(`/api/chats/${chatId}/messages/${messageId}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(updates)
+	});
+
+export const createMessage = (
+	chatId: string,
+	parentId: string | null,
+	role: string,
+	content: string,
+	output?: any[]
+) =>
+	fetchJSON<{ ok: boolean; message_id: string }>(
+		`/api/chats/${chatId}/messages`,
+		jsonBody({ parent_id: parentId, role, content, output })
+	);

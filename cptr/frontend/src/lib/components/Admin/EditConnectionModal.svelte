@@ -109,11 +109,17 @@
 		{/if}
 
 		<label class="text-[10px] text-gray-400 dark:text-gray-600 mt-2">{$t('connections.baseUrl')}</label>
-		<input type="text" placeholder="https://api.openai.com/v1" bind:value={formBaseUrl} autocomplete="off" spellcheck="false"
+		<input type="text" placeholder="https://api.openai.com/v1" bind:value={formBaseUrl} autocomplete="off" spellcheck="false" list="base-url-suggestions-edit"
 			class="block w-full bg-transparent text-[13px] text-gray-700 dark:text-gray-300 placeholder:text-gray-300 dark:placeholder:text-gray-700 outline-none py-0.5 font-mono" />
+		<datalist id="base-url-suggestions-edit">
+			<option value="https://api.anthropic.com/v1" />
+			<option value="https://api.openai.com/v1" />
+			<option value="https://openrouter.ai/api/v1" />
+			<option value="http://localhost:11434/v1" />
+		</datalist>
 
 		<label class="text-[10px] text-gray-400 dark:text-gray-600 mt-2">{$t('connections.apiKey')}</label>
-		<input type="password" placeholder="••••••••  (leave blank to keep)" bind:value={formApiKey} autocomplete="off"
+		<input type="password" placeholder="••••••••  (leave blank to keep)" bind:value={formApiKey} autocomplete="new-password"
 			class="block w-full bg-transparent text-[13px] text-gray-700 dark:text-gray-300 placeholder:text-gray-300 dark:placeholder:text-gray-700 outline-none py-0.5 font-mono" />
 
 		<label class="text-[10px] text-gray-400 dark:text-gray-600 mt-2">{$t('connections.prefixId')}</label>

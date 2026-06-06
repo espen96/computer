@@ -14,14 +14,13 @@
 
 {#each tokens as token}
 	{#if token.type === 'heading'}
-		<svelte:element this={`h${(token as Tokens.Heading).depth}`} class="md-heading md-h{(token as Tokens.Heading).depth}">
-			<InlineRenderer items={(token as Tokens.Heading).tokens} />
+		{@const h = token as Tokens.Heading}
+		<svelte:element this={`h${h.depth}`}>
+			<InlineRenderer items={h.tokens} />
 		</svelte:element>
 
 	{:else if token.type === 'paragraph'}
-		<p class="md-p">
-			<InlineRenderer items={(token as Tokens.Paragraph).tokens} />
-		</p>
+		<p><InlineRenderer items={(token as Tokens.Paragraph).tokens} /></p>
 
 	{:else if token.type === 'code'}
 		{#if (token as Tokens.Code).lang === 'mermaid'}
@@ -31,17 +30,17 @@
 		{/if}
 
 	{:else if token.type === 'blockquote'}
-		<blockquote class="md-blockquote">
+		<blockquote>
 			<svelte:self tokens={(token as Tokens.Blockquote).tokens} />
 		</blockquote>
 
 	{:else if token.type === 'list'}
 		{@const list = token as Tokens.List}
-		<svelte:element this={list.ordered ? 'ol' : 'ul'} class="md-list" start={list.ordered ? list.start : undefined}>
+		<svelte:element this={list.ordered ? 'ol' : 'ul'} start={list.ordered ? list.start : undefined}>
 			{#each list.items as item}
-				<li class="md-li">
+				<li>
 					{#if item.task}
-						<input type="checkbox" checked={item.checked} disabled class="md-checkbox" />
+						<input type="checkbox" checked={item.checked} disabled />
 					{/if}
 					{#if item.tokens}
 						<svelte:self tokens={item.tokens} />
@@ -52,36 +51,33 @@
 
 	{:else if token.type === 'table'}
 		{@const table = token as Tokens.Table}
-		<div class="md-table-wrap">
-			<table class="md-table">
-				<thead>
+		<table>
+			<thead>
+				<tr>
+					{#each table.header as cell, i}
+						<th style={table.align[i] ? `text-align:${table.align[i]}` : ''}>
+							<InlineRenderer items={cell.tokens} />
+						</th>
+					{/each}
+				</tr>
+			</thead>
+			<tbody>
+				{#each table.rows as row}
 					<tr>
-						{#each table.header as cell, i}
-							<th style={table.align[i] ? `text-align:${table.align[i]}` : ''}>
+						{#each row as cell, i}
+							<td style={table.align[i] ? `text-align:${table.align[i]}` : ''}>
 								<InlineRenderer items={cell.tokens} />
-							</th>
+							</td>
 						{/each}
 					</tr>
-				</thead>
-				<tbody>
-					{#each table.rows as row}
-						<tr>
-							{#each row as cell, i}
-								<td style={table.align[i] ? `text-align:${table.align[i]}` : ''}>
-									<InlineRenderer items={cell.tokens} />
-								</td>
-							{/each}
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
+				{/each}
+			</tbody>
+		</table>
 
 	{:else if token.type === 'hr'}
-		<hr class="md-hr" />
+		<hr class="border-gray-100/60 dark:border-gray-850/40" />
 
 	{:else if token.type === 'text'}
-		<!-- Block-level text: appears inside tight list items. Has inline tokens. -->
 		{#if 'tokens' in token && token.tokens}
 			<InlineRenderer items={token.tokens} />
 		{:else}

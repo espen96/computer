@@ -21,7 +21,7 @@
 		type Tab,
 	} from '$lib/stores';
 	import { openChatTab } from '$lib/stores';
-	import { chatEnabled } from '$lib/stores/chat';
+	import { chatEnabled, streamingChatTabs } from '$lib/stores/chat';
 	import Icon from './Icon.svelte';
 	import DropdownMenu from './DropdownMenu.svelte';
 	import { tooltip } from '$lib/tooltip';
@@ -259,7 +259,11 @@
 					onclick={() => handleTabClick(tab)}
 					oncontextmenu={(e) => handleContextMenu(e, tab)}
 				>
-					<Icon name={tabIconName(tab)} size={14} />
+					{#if tab.type === 'chat' && $streamingChatTabs.has(tab.id)}
+						<span class="tab-spinner" style="width: 14px; height: 14px;"></span>
+					{:else}
+						<Icon name={tabIconName(tab)} size={14} />
+					{/if}
 					<span class="max-w-30 overflow-hidden text-ellipsis">
 						{tab.type === 'files' ? ($activeWorkspace?.name ?? 'Files') : tab.label}
 					</span>
@@ -350,5 +354,19 @@
 	}
 	.group-tabs-row::-webkit-scrollbar {
 		display: none;
+	}
+
+	.tab-spinner {
+		display: inline-block;
+		border: 2px solid currentColor;
+		border-top-color: transparent;
+		border-radius: 50%;
+		animation: tab-spin 0.8s linear infinite;
+		opacity: 0.7;
+		flex-shrink: 0;
+	}
+
+	@keyframes tab-spin {
+		to { transform: rotate(360deg); }
 	}
 </style>
