@@ -60,6 +60,8 @@
 	// ── @file mention suggestion ────────────────────
 	let popupEl: HTMLDivElement | null = null;
 	let popupComponent: Record<string, any> | null = null;
+	let activeClientRectFn: (() => DOMRect | null) | null = null;
+	let repositionRafId: number | null = null;
 
 	async function fetchSuggestions({ query }: { query: string }): Promise<FileMentionAttrs[]> {
 		if (!workspace) return [];
@@ -92,6 +94,24 @@
 		});
 	}
 
+	function startRepositionLoop() {
+		stopRepositionLoop();
+		function tick() {
+			if (activeClientRectFn) {
+				updatePopupPosition(activeClientRectFn());
+				repositionRafId = requestAnimationFrame(tick);
+			}
+		}
+		repositionRafId = requestAnimationFrame(tick);
+	}
+
+	function stopRepositionLoop() {
+		if (repositionRafId !== null) {
+			cancelAnimationFrame(repositionRafId);
+			repositionRafId = null;
+		}
+	}
+
 	function createSuggestionRenderer() {
 		let selectedIndex = 0;
 		let currentItems: FileMentionAttrs[] = [];
@@ -111,13 +131,16 @@
 				command = props.command;
 				currentItems = props.items;
 				selectedIndex = 0;
+				activeClientRectFn = props.clientRect ?? null;
 				remount();
 				updatePopupPosition(props.clientRect?.());
+				startRepositionLoop();
 			},
 			onUpdate(props: any) {
 				command = props.command;
 				currentItems = props.items;
 				selectedIndex = 0;
+				activeClientRectFn = props.clientRect ?? null;
 				remount();
 				updatePopupPosition(props.clientRect?.());
 			},
@@ -160,6 +183,8 @@
 	}
 
 	function destroyPopup() {
+		stopRepositionLoop();
+		activeClientRectFn = null;
 		if (popupComponent) {
 			try { unmount(popupComponent); } catch {}
 			popupComponent = null;
