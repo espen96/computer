@@ -12,7 +12,7 @@ RUN npm run build
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS backend-builder
 
 WORKDIR /build
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock LICENSE README.md CHANGELOG.md ./
 COPY cptr/ cptr/
 
 # Drop the pre-built frontend into the package tree
@@ -40,7 +40,7 @@ USER cptr
 WORKDIR /home/cptr
 
 # Install the wheel into an isolated venv
-COPY --from=backend-builder /dist/*.whl /tmp/
+COPY --chown=cptr:cptr --from=backend-builder /dist/*.whl /tmp/
 RUN uv venv /home/cptr/.venv && \
     uv pip install --python /home/cptr/.venv/bin/python /tmp/*.whl && \
     rm /tmp/*.whl

@@ -26,8 +26,10 @@ def parse_changelog(path: Path | None = None) -> dict:
         }
     """
     if path is None:
-        # Look relative to project root (two levels up from this file)
+        # Look relative to project root (two levels up from this file) or inside the package
         path = Path(__file__).resolve().parent.parent.parent / "CHANGELOG.md"
+        if not path.exists():
+            path = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
 
     try:
         content = path.read_text(encoding="utf-8")
