@@ -28,6 +28,7 @@
 	let chatInputEl: ChatInput;
 	let sending = $state(false);
 	let autoScroll = $state(true);
+	let cancelledMessageId: string | null = null;
 	let loading = $state(!!initialChatId);
 
 	// ── Windowed rendering ──────────────────────────────────────
@@ -282,6 +283,12 @@
 			if (tabId) {
 				streamingChatTabs.update((s) => { const n = new Set(s); n.delete(tabId); return n; });
 			}
+			// Skip reload for cancelled messages — optimistic state is already correct
+			// and reloading causes a visual flash + scroll jump
+			if (cancelledMessageId === data.message_id) {
+				cancelledMessageId = null;
+				return;
+			}
 			loadChat(data.chat_id);
 		}
 	}
@@ -531,8 +538,8 @@
 		const active = allMessages.find((m) => m.role === 'assistant' && !m.done);
 		if (!active || !chatId) return;
 
-		// Keep the current autoScroll state: if the user was at the bottom,
-		// they stay there; if they had scrolled up, loadChat preserves position.
+		// Tell the socket handler to skip the reload for this message
+		cancelledMessageId = active.id;
 
 		// Optimistically mark as done so streaming indicator disappears immediately
 		if (active.output) {
@@ -542,6 +549,29 @@
 				}
 			}
 		}
+
+		// Flush any pending streaming text into the output array so it renders
+		// when done=true. The AssistantMessage component only shows output items
+		// for done messages — raw content is only shown during streaming (!done).
+		const flushedText = (active.output || [])
+			.filter((i: any) => i.type === 'message')
+			.flatMap((i: any) => i.content || [])
+			.map((c: any) => c.text)
+			.join('');
+		const pendingText = (active.content || '').slice(flushedText.length);
+		if (pendingText) {
+			active.output = [
+				...(active.output || []),
+				{
+					type: 'message',
+					id: `flush-${Date.now()}`,
+					status: 'completed',
+					role: 'assistant',
+					content: [{ type: 'output_text', text: pendingText }],
+				},
+			];
+		}
+
 		active.done = true;
 		allMessages = [...allMessages];
 
@@ -550,8 +580,6 @@
 		} catch (err) {
 			console.error('[chat] cancel error', err);
 		}
-		// Don't call loadChat here — the socket 'done' event will trigger it,
-		// and loadChat itself preserves scroll position on reloads.
 	}
 
 	function handleApprove(messageId: string, callId: string, approved: boolean) {
