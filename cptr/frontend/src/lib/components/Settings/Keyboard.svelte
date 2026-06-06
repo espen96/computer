@@ -1,0 +1,180 @@
+<script lang="ts">
+	import { keybindings, ACTION_IDS, ACTION_LABELS, DEFAULT_KEYBINDINGS, formatChord, eventToChord, resetKeybindings } from '$lib/stores/keybindings';
+	import type { ActionId } from '$lib/stores/keybindings';
+
+	/** Action descriptions for the second line. */
+	const ACTION_DESCRIPTIONS: Record<ActionId, string> = {
+		newFile: 'Open a new untitled file',
+		newTerminal: 'Open a new terminal session',
+		newChat: 'Start a new AI chat',
+		closeTab: 'Close the active tab',
+		nextTab: 'Switch to the next tab',
+		prevTab: 'Switch to the previous tab',
+		quickOpen: 'Search and open files quickly',
+		openSettings: 'Open the settings panel',
+		toggleSplit: 'Toggle split editor view',
+		toggleSidebar: 'Show or hide the sidebar',
+	};
+
+	let recordingAction = $state<ActionId | null>(null);
+
+	function startRecording(actionId: ActionId) {
+		recordingAction = actionId;
+	}
+
+	function cancelRecording() {
+		recordingAction = null;
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (!recordingAction) return;
+		e.preventDefault();
+		e.stopPropagation();
+
+		const chord = eventToChord(e);
+		if (!chord) return; // Pure modifier press, keep waiting
+
+		if (chord === 'ESCAPE') {
+			cancelRecording();
+			return;
+		}
+
+		// Save it
+		keybindings.update((current) => ({
+			...current,
+			[recordingAction!]: chord,
+		}));
+		recordingAction = null;
+	}
+
+	function clearBinding(actionId: ActionId) {
+		keybindings.update((current) => ({
+			...current,
+			[actionId]: '',
+		}));
+	}
+
+	/** Check if a chord is used by another action. */
+	function getConflict(actionId: ActionId, chord: string): ActionId | null {
+		if (!chord) return null;
+		for (const id of ACTION_IDS) {
+			if (id !== actionId && $keybindings[id] === chord) return id;
+		}
+		return null;
+	}
+</script>
+
+<svelte:window onkeydown={handleKeydown} />
+
+<div class="flex flex-col min-h-full">
+	<div class="flex items-center justify-between mb-3">
+		<h2 class="text-sm font-medium text-gray-900 dark:text-white">Keyboard Shortcuts</h2>
+		<button
+			class="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-100"
+			onclick={resetKeybindings}
+		>Reset defaults</button>
+	</div>
+
+	<!-- Column headers -->
+	<div class="flex items-center gap-2 mb-0.5 px-1">
+		<span class="flex-1 text-[10px] font-medium text-gray-400 dark:text-gray-600">Command</span>
+		<span class="w-[140px] text-[10px] font-medium text-gray-400 dark:text-gray-600 text-right">Keybinding</span>
+	</div>
+
+	<div class="flex flex-col">
+		{#each ACTION_IDS as actionId}
+			{@const chord = $keybindings[actionId]}
+			{@const isRecording = recordingAction === actionId}
+			{@const conflict = getConflict(actionId, chord)}
+
+			<div class="shortcut-row">
+				<div class="flex-1 min-w-0">
+					<div class="text-[11.5px] text-gray-700 dark:text-gray-300">{ACTION_LABELS[actionId]}</div>
+					<div class="text-[10px] text-gray-400 dark:text-gray-600 truncate leading-tight">{ACTION_DESCRIPTIONS[actionId]}</div>
+				</div>
+
+				<div class="w-[140px] flex items-center justify-end shrink-0">
+					{#if isRecording}
+						<span class="recording-indicator">Press keys…</span>
+					{:else if chord}
+						<button
+							class="key-pill cursor-pointer"
+							onclick={() => startRecording(actionId)}
+							title="Click to rebind"
+						>
+							{formatChord(chord)}
+						</button>
+					{:else}
+						<button
+							class="text-[10px] text-gray-500 dark:text-gray-600 cursor-pointer hover:text-gray-400 transition-colors duration-75"
+							onclick={() => startRecording(actionId)}
+						>Unassigned</button>
+					{/if}
+
+					{#if conflict}
+						<span class="text-[9px] text-amber-500 ml-1" title="Also bound to {ACTION_LABELS[conflict]}">!</span>
+					{/if}
+				</div>
+			</div>
+		{/each}
+	</div>
+
+	<p class="text-[10px] text-gray-400 dark:text-gray-600 mt-3">
+		Click a binding to rebind. Press <kbd class="kbd-inline">Esc</kbd> to cancel.
+	</p>
+</div>
+
+<style>
+	@reference "../../../app.css";
+
+	.shortcut-row {
+		@apply flex items-center gap-2 px-1 py-1.5;
+		border-bottom: 1px solid rgba(128, 128, 128, 0.04);
+	}
+
+	.shortcut-row:last-child {
+		border-bottom: none;
+	}
+
+	.key-pill {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		height: 22px;
+		padding: 0 6px;
+		border-radius: 9999px;
+		font-size: 10px;
+		font-weight: 500;
+		line-height: 1;
+		background: #e8e8e8;
+		color: #555;
+	}
+
+	:global(.dark) .key-pill {
+		background: #1e1e1e;
+		color: #999;
+	}
+
+	.recording-indicator {
+		display: inline-flex;
+		align-items: center;
+		height: 18px;
+		padding: 0 8px;
+		border-radius: 4px;
+		font-size: 10px;
+		font-weight: 500;
+		background: rgba(59, 130, 246, 0.1);
+		color: rgba(59, 130, 246, 0.7);
+		animation: pulse-subtle 1.5s ease-in-out infinite;
+	}
+
+	@keyframes pulse-subtle {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.6; }
+	}
+
+	.kbd-inline {
+		@apply inline px-0.5 py-px rounded text-[9px] font-mono bg-gray-100 dark:bg-white/6 text-gray-500;
+	}
+</style>
+

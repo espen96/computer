@@ -8,9 +8,11 @@
 	import ShortcutBar from '$lib/components/ShortcutBar.svelte';
 	import GitBar from '$lib/components/GitBar.svelte';
 	import QuickOpen from '$lib/components/QuickOpen.svelte';
+	import SettingsModal from '$lib/components/SettingsModal.svelte';
 	import AuthScreen from '$lib/components/AuthScreen.svelte';
 	import { Toaster } from 'svelte-sonner';
 	import { activeTab, currentWorkspace, stateLoaded, initState, gitReviewOpen, isGitRepo, splitActive, splitCurrentTab, closeGroup } from '$lib/stores';
+	import { matchKeybinding, executeAction } from '$lib/stores/keybindings';
 	import { systemEvents } from '$lib/stores/systemEvents.svelte';
 	import { socketStore } from '$lib/stores/socket.svelte';
 	import { setSession } from '$lib/session';
@@ -21,6 +23,7 @@
 
 	let { children } = $props();
 	let showQuickOpen = $state(false);
+	let showSettings = $state(false);
 	let viewportHeight = $state('100dvh');
 
 	// Auth state
@@ -128,21 +131,13 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-			e.preventDefault();
-			showQuickOpen = !showQuickOpen;
-		}
-		// Cmd/Ctrl+\ to toggle split view
-		if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
-			e.preventDefault();
-			if ($splitActive && $currentWorkspace) {
-				// Close the non-active group
-				const otherGroup = $currentWorkspace.groups.find((g) => g.id !== $currentWorkspace!.activeGroupId);
-				if (otherGroup) closeGroup(otherGroup.id);
-			} else {
-				splitCurrentTab();
-			}
-		}
+		const action = matchKeybinding(e);
+		if (!action) return;
+		e.preventDefault();
+		executeAction(action, {
+			toggleQuickOpen: () => { showQuickOpen = !showQuickOpen; },
+			toggleSettings: () => { showSettings = !showSettings; },
+		});
 	}
 
 	// Connect system events when workspace is active
@@ -232,6 +227,9 @@
 
 	{#if showQuickOpen}
 		<QuickOpen onclose={() => showQuickOpen = false} />
+	{/if}
+	{#if showSettings}
+		<SettingsModal onclose={() => showSettings = false} />
 	{/if}
 {:else}
 	<div class="flex items-center justify-center h-dvh bg-white dark:bg-black">

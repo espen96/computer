@@ -22,6 +22,7 @@
 	} from '$lib/stores';
 	import { openChatTab } from '$lib/stores';
 	import { chatEnabled, streamingChatTabs } from '$lib/stores/chat';
+	import { keybindings, formatChord } from '$lib/stores/keybindings';
 	import Icon from './Icon.svelte';
 	import DropdownMenu from './DropdownMenu.svelte';
 	import { tooltip } from '$lib/tooltip';
@@ -129,16 +130,19 @@
 		{
 			label: $t('bar.newFile'),
 			icon: 'page',
+			shortcut: formatChord($keybindings.newFile),
 			onclick: () => { openUntitledFileTab(group.id); },
 		},
 		...($chatEnabled ? [{
 			label: $t('bar.newChat'),
 			icon: 'chat-bubble',
+			shortcut: formatChord($keybindings.newChat),
 			onclick: () => { openChatTab(undefined, group.id); },
 		}] : []),
 		{
 			label: $t('bar.newTerminal'),
 			icon: 'terminal',
+			shortcut: formatChord($keybindings.newTerminal),
 			onclick: () => { openTerminalTab(group.id); },
 		},
 	]);

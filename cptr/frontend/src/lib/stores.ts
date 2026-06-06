@@ -27,6 +27,7 @@ import {
 import { listSessions, createSession, deleteSession } from '$lib/apis/terminal';
 import { changeLocale, i18next } from '$lib/i18n';
 import { streamingChatTabs } from '$lib/stores/chat';
+import { keybindings, loadKeybindings } from '$lib/stores/keybindings';
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -71,6 +72,7 @@ export interface UserPreferences {
 	toolApprovalMode: ToolApprovalMode;
 	locale: string;
 	workspaceOrder?: string[]; // ordered paths for sidebar drag-reorder
+	keybindings?: Record<string, string>; // user-customised keyboard shortcuts
 }
 
 export type Theme = 'dark' | 'light' | 'system';
@@ -261,6 +263,7 @@ function persistPreferences(): void {
 			toolApprovalMode: get(toolApprovalMode),
 			locale: i18next.language,
 			workspaceOrder: get(workspaceOrder),
+			keybindings: get(keybindings),
 		};
 		savePreferences(prefs as unknown as Record<string, unknown>).catch(() => {});
 	}, 300);
@@ -276,6 +279,7 @@ function subscribeForPersistence() {
 	sidebarWidth.subscribe(() => { if (get(stateLoaded)) persistPreferences(); });
 	toolApprovalMode.subscribe(() => { if (get(stateLoaded)) persistPreferences(); });
 	workspaceOrder.subscribe(() => { if (get(stateLoaded)) persistPreferences(); });
+	keybindings.subscribe(() => { if (get(stateLoaded)) persistPreferences(); });
 	i18next.on('languageChanged', () => { if (get(stateLoaded)) persistPreferences(); });
 }
 
@@ -296,6 +300,7 @@ export async function loadPreferences(): Promise<void> {
 		}
 		if (prefs.locale) changeLocale(prefs.locale as string);
 		if (Array.isArray(prefs.workspaceOrder)) workspaceOrder.set(prefs.workspaceOrder as string[]);
+		if (prefs.keybindings) loadKeybindings(prefs.keybindings as Record<string, string>);
 	} catch {
 		// First run, no preferences yet
 	}

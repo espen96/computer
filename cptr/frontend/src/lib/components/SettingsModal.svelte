@@ -3,17 +3,18 @@
     import Modal from "./Modal.svelte";
     import General from "./Settings/General.svelte";
     import Account from "./Settings/Account.svelte";
+    import Keyboard from "./Settings/Keyboard.svelte";
     import About from "./Settings/About.svelte";
     import { t } from '$lib/i18n';
 
     interface Props {
         onclose: () => void;
-        initialTab?: 'general' | 'account' | 'about';
+        initialTab?: 'general' | 'keyboard' | 'account' | 'about';
     }
 
     let { onclose, initialTab = 'general' }: Props = $props();
 
-    let activeTab = $state<"general" | "account" | "about">(initialTab);
+    let activeTab = $state<"general" | "keyboard" | "account" | "about">(initialTab);
 </script>
 
 <Modal
@@ -31,7 +32,7 @@
                 <Icon name="chevron-left" size={12} />
                 <span>{$t('settings.back')}</span>
             </button>
-            {#each [{ id: "general", label: $t('settings.general'), icon: "settings" }, { id: "account", label: $t('settings.account'), icon: "user" }, { id: "about", label: $t('settings.about'), icon: "info" }] as tab}
+            {#each [{ id: "general", label: $t('settings.general'), icon: "settings" }, { id: "keyboard", label: "Keyboard", icon: "terminal" }, { id: "account", label: $t('settings.account'), icon: "user" }, { id: "about", label: $t('settings.about'), icon: "info" }] as tab}
                 <button
                     class="flex items-center gap-1.5 h-7 px-2 md:w-full shrink-0 rounded-lg text-xs text-left transition-colors duration-75
 						{activeTab === tab.id
@@ -49,6 +50,8 @@
     <div class="flex-1 overflow-y-auto min-h-0 p-4 md:px-5">
         {#if activeTab === "general"}
             <General />
+        {:else if activeTab === "keyboard"}
+            <Keyboard />
         {:else if activeTab === "account"}
             <Account />
         {:else if activeTab === "about"}

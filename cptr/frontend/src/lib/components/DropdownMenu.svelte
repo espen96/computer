@@ -12,6 +12,8 @@
 		image?: string;
 		/** Optional check mark on the right when active. */
 		check?: boolean;
+		/** Optional keyboard shortcut hint displayed as a single pill on the right. */
+		shortcut?: string;
 	}
 
 	interface Props {
@@ -139,6 +141,9 @@
 						<Icon name={item.icon} size={14} />
 					{/if}
 					<span class="flex-1 text-left truncate">{item.label}</span>
+					{#if item.shortcut}
+						<kbd class="ml-auto shrink-0 inline-flex items-center h-[18px] px-[5px] rounded-full text-[9px] font-medium leading-none bg-[#e8e8e8] text-[#555] dark:bg-[#1e1e1e] dark:text-[#999]">{item.shortcut}</kbd>
+					{/if}
 					{#if item.check && item.active}
 						<svg class="w-3 h-3 shrink-0 text-gray-400 dark:text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
 							<polyline points="20 6 9 17 4 12" />
