@@ -311,11 +311,12 @@
 
 {#if gitStatus?.is_repo}
 	<div class="shrink-0 border-t border-gray-200 dark:border-white/6 relative" bind:this={containerEl}>
-		<!-- Resize handle (top edge, always available when expanded) -->
+		<!-- Resize handle (top edge, styled like sidebar) -->
 		{#if expanded}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
-				class="h-1 cursor-row-resize hover:bg-gray-200 dark:hover:bg-white/8 transition-colors {resizing ? 'bg-gray-300 dark:bg-white/12' : ''}"
+				class="git-resize-handle"
+				class:active={resizing}
 				onpointerdown={onResizeStart}
 			></div>
 		{/if}
@@ -490,8 +491,7 @@
 											{/if}
 										</span>
 										{#if fp.dir}
-											<!-- svelte-ignore a11y_no_static_element_interactions -->
-											<span class="text-[10px] text-gray-400 dark:text-gray-600 truncate shrink min-w-0 hover:underline cursor-pointer" onclick={(e) => { e.stopPropagation(); openFileTab(workspacePath.replace(/\/$/, '') + '/' + file.path); }}>{fp.dir}</span>
+											<span class="text-[10px] text-gray-400 dark:text-gray-600 truncate shrink min-w-0">{fp.dir}</span>
 										{/if}
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
 										<span class="text-[11px] text-gray-800 dark:text-gray-200 truncate shrink-0 hover:underline cursor-pointer" onclick={(e) => { e.stopPropagation(); openFileTab(workspacePath.replace(/\/$/, '') + '/' + file.path); }}>{fp.name}</span>
@@ -649,5 +649,21 @@
 			transparent 1px,
 			transparent 3px
 		) 3;
+	}
+
+	.git-resize-handle {
+		position: absolute;
+		top: -3px;
+		left: 0;
+		right: 0;
+		height: 6px;
+		cursor: row-resize;
+		z-index: 10;
+		transition: background 0.15s;
+	}
+
+	.git-resize-handle:hover,
+	.git-resize-handle.active {
+		background: rgba(150, 150, 150, 0.12);
 	}
 </style>
