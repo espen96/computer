@@ -76,6 +76,27 @@
 		selectionBackground: 'rgba(0, 0, 0, 0.15)',
 	};
 
+	// Send input to PTY via WebSocket (binary prefix protocol)
+	function sendInput(data: string) {
+		if (ws?.readyState === WebSocket.OPEN) {
+			const encoded = textEncoder.encode(data);
+			const buf = new Uint8Array(1 + encoded.length);
+			buf[0] = MSG_INPUT;
+			buf.set(encoded, 1);
+			ws.send(buf.buffer);
+		}
+	}
+
+	function sendResize(cols: number, rows: number) {
+		if (ws?.readyState === WebSocket.OPEN) {
+			const payload = textEncoder.encode(JSON.stringify({ cols, rows }));
+			const buf = new Uint8Array(1 + payload.length);
+			buf[0] = MSG_RESIZE;
+			buf.set(payload, 1);
+			ws.send(buf.buffer);
+		}
+	}
+
 	onMount(() => {
 		if (!containerEl) return;
 
@@ -97,27 +118,6 @@
 			}
 		});
 		observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-
-		// Send input to PTY via WebSocket (binary prefix protocol)
-		function sendInput(data: string) {
-			if (ws?.readyState === WebSocket.OPEN) {
-				const encoded = textEncoder.encode(data);
-				const buf = new Uint8Array(1 + encoded.length);
-				buf[0] = MSG_INPUT;
-				buf.set(encoded, 1);
-				ws.send(buf.buffer);
-			}
-		}
-
-		function sendResize(cols: number, rows: number) {
-			if (ws?.readyState === WebSocket.OPEN) {
-				const payload = textEncoder.encode(JSON.stringify({ cols, rows }));
-				const buf = new Uint8Array(1 + payload.length);
-				buf[0] = MSG_RESIZE;
-				buf.set(payload, 1);
-				ws.send(buf.buffer);
-			}
-		}
 
 		// Handle macOS key combos that need special escape sequences
 		term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
