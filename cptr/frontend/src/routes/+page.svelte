@@ -479,39 +479,21 @@
 		justify-content: center;
 		z-index: 10;
 		position: relative;
+		transition: background 0.15s;
 	}
 
 	.split-divider-h {
-		width: 4px;
+		width: 6px;
 		cursor: col-resize;
 	}
 
 	.split-divider-v {
-		height: 4px;
+		height: 6px;
 		cursor: row-resize;
 	}
 
 	.split-divider-handle {
-		position: absolute;
-		border-radius: 9999px;
-		background: transparent;
-		transition: background 150ms ease;
-	}
-
-	.split-divider-h .split-divider-handle {
-		width: 2px;
-		height: 32px;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-	}
-
-	.split-divider-v .split-divider-handle {
-		height: 2px;
-		width: 32px;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
+		display: none;
 	}
 
 	.split-divider::before {
@@ -544,9 +526,9 @@
 		background: rgba(255, 255, 255, 0.06);
 	}
 
-	.split-divider:hover .split-divider-handle,
-	.is-dragging .split-divider .split-divider-handle {
-		background: oklch(0.6 0.15 250);
+	.split-divider:hover,
+	.is-dragging .split-divider {
+		background: rgba(150, 150, 150, 0.12);
 	}
 
 	/* Drag state */
