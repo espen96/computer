@@ -63,6 +63,12 @@ Then open the URL printed in the logs, usually `http://localhost:8000/?token=...
 
 The `:dev` image is also available and tracks the `main` branch.
 
+## Security model
+
+cptr is designed as **your computer, served to you**. Once authenticated, a user has full access to the host filesystem and shell, equivalent to an SSH session. There is no path sandboxing and no per-user isolation.
+
+This is safe when you are the only user and you control the network. It is not safe if untrusted users share the instance, it is exposed to the public internet, or a reverse proxy forwards spoofable auth headers. Treat a shared cptr like an open SSH port.
+
 ## License
 
 Open Use License. Source available. All rights reserved. See [LICENSE](LICENSE). [Enterprise licenses available](mailto:sales@openwebui.com).
