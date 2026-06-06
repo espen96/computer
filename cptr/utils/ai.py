@@ -9,6 +9,7 @@ chat_completion() provides a simple non-streaming call for lightweight tasks
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -18,6 +19,15 @@ import httpx
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+_STREAM_RETRY_ATTEMPTS = 3
+_STREAM_RETRY_ERRORS = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadError,
+    httpx.ReadTimeout,
+    httpx.RemoteProtocolError,
+)
 
 
 class ChatCompletionForm(BaseModel):
@@ -171,51 +181,69 @@ async def stream_anthropic(
     body = {k: v for k, v in body.items() if v is not None}
     headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(30, read=300)) as client:
-        logger.info("[stream] anthropic POST %s/messages model=%s", url, form_data.model)
-        async with client.stream(
-            "POST", f"{url}/messages", json=body, headers=headers
-        ) as resp:
-            logger.info("[stream] anthropic status=%s", resp.status_code)
-            resp.raise_for_status()
-            current_block: dict = {}
-            async for line in resp.aiter_lines():
-                if not line.startswith("data: "):
-                    continue
-                event = json.loads(line[6:])
-                etype = event.get("type")
+    emitted = False
+    for attempt in range(_STREAM_RETRY_ATTEMPTS):
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30, read=300)) as client:
+                logger.info("[stream] anthropic POST %s/messages model=%s", url, form_data.model)
+                async with client.stream(
+                    "POST", f"{url}/messages", json=body, headers=headers
+                ) as resp:
+                    logger.info("[stream] anthropic status=%s", resp.status_code)
+                    resp.raise_for_status()
+                    current_block: dict = {}
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        event = json.loads(line[6:])
+                        etype = event.get("type")
 
-                if etype == "content_block_start":
-                    block = event["content_block"]
-                    current_block = {"type": block["type"], "index": event["index"]}
-                    if block["type"] == "tool_use":
-                        current_block["id"] = block["id"]
-                        current_block["name"] = block["name"]
-                        current_block["input_json"] = ""
+                        if etype == "content_block_start":
+                            block = event["content_block"]
+                            current_block = {"type": block["type"], "index": event["index"]}
+                            if block["type"] == "tool_use":
+                                current_block["id"] = block["id"]
+                                current_block["name"] = block["name"]
+                                current_block["input_json"] = ""
 
-                elif etype == "content_block_delta":
-                    delta = event["delta"]
-                    if delta["type"] == "text_delta":
-                        yield {"type": "text_delta", "content": delta["text"]}
-                    elif delta["type"] == "input_json_delta":
-                        current_block["input_json"] += delta["partial_json"]
+                        elif etype == "content_block_delta":
+                            delta = event["delta"]
+                            if delta["type"] == "text_delta":
+                                emitted = True
+                                yield {"type": "text_delta", "content": delta["text"]}
+                            elif delta["type"] == "input_json_delta":
+                                current_block["input_json"] += delta["partial_json"]
 
-                elif etype == "content_block_stop":
-                    if current_block.get("type") == "tool_use":
-                        yield {
-                            "type": "tool_call",
-                            "call_id": current_block["id"],
-                            "name": current_block["name"],
-                            "arguments": json.loads(current_block["input_json"]),
-                        }
+                        elif etype == "content_block_stop":
+                            if current_block.get("type") == "tool_use":
+                                emitted = True
+                                yield {
+                                    "type": "tool_call",
+                                    "call_id": current_block["id"],
+                                    "name": current_block["name"],
+                                    "arguments": json.loads(current_block["input_json"]),
+                                }
 
-                elif etype == "message_delta":
-                    usage = event.get("usage", {})
-                    if usage:
-                        yield {"type": "usage", **usage}
+                        elif etype == "message_delta":
+                            usage = event.get("usage", {})
+                            if usage:
+                                emitted = True
+                                yield {"type": "usage", **usage}
 
-                elif etype == "message_stop":
-                    yield {"type": "done"}
+                        elif etype == "message_stop":
+                            emitted = True
+                            yield {"type": "done"}
+            return
+        except _STREAM_RETRY_ERRORS:
+            if emitted or attempt == _STREAM_RETRY_ATTEMPTS - 1:
+                raise
+            logger.warning(
+                "[stream] anthropic transient read failure before first event; retrying (%s/%s)",
+                attempt + 1,
+                _STREAM_RETRY_ATTEMPTS,
+                exc_info=True,
+            )
+            await asyncio.sleep(0.5 * (attempt + 1))
 
 
 # ── OpenAI Chat Completions ──────────────────────────────────
@@ -258,49 +286,67 @@ async def stream_openai_completions(
         body["tools"] = tools
     headers = {"Authorization": f"Bearer {key}"}
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(30, read=300)) as client:
-        logger.info("[stream] openai completions POST %s/chat/completions model=%s", url, form_data.model)
-        async with client.stream(
-            "POST", f"{url}/chat/completions", json=body, headers=headers
-        ) as resp:
-            logger.info("[stream] openai completions status=%s", resp.status_code)
-            resp.raise_for_status()
-            tool_calls: dict[int, dict] = {}
-            async for line in resp.aiter_lines():
-                if not line.startswith("data: ") or line == "data: [DONE]":
-                    continue
-                chunk = json.loads(line[6:])
-                choices = chunk.get("choices", [])
-                delta = choices[0].get("delta", {}) if choices else {}
+    emitted = False
+    for attempt in range(_STREAM_RETRY_ATTEMPTS):
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30, read=300)) as client:
+                logger.info("[stream] openai completions POST %s/chat/completions model=%s", url, form_data.model)
+                async with client.stream(
+                    "POST", f"{url}/chat/completions", json=body, headers=headers
+                ) as resp:
+                    logger.info("[stream] openai completions status=%s", resp.status_code)
+                    resp.raise_for_status()
+                    tool_calls: dict[int, dict] = {}
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: ") or line == "data: [DONE]":
+                            continue
+                        chunk = json.loads(line[6:])
+                        choices = chunk.get("choices", [])
+                        delta = choices[0].get("delta", {}) if choices else {}
 
-                if delta.get("content"):
-                    yield {"type": "text_delta", "content": delta["content"]}
+                        if delta.get("content"):
+                            emitted = True
+                            yield {"type": "text_delta", "content": delta["content"]}
 
-                for tc in delta.get("tool_calls", []):
-                    idx = tc["index"]
-                    if idx not in tool_calls:
-                        tool_calls[idx] = {
-                            "id": tc["id"],
-                            "name": tc["function"]["name"],
-                            "arguments_json": "",
-                        }
-                    tool_calls[idx]["arguments_json"] += tc["function"].get(
-                        "arguments", ""
-                    )
+                        for tc in delta.get("tool_calls", []):
+                            idx = tc["index"]
+                            if idx not in tool_calls:
+                                tool_calls[idx] = {
+                                    "id": tc["id"],
+                                    "name": tc["function"]["name"],
+                                    "arguments_json": "",
+                                }
+                            tool_calls[idx]["arguments_json"] += tc["function"].get(
+                                "arguments", ""
+                            )
 
-                if choices and choices[0].get("finish_reason") == "tool_calls":
-                    for tc in tool_calls.values():
-                        yield {
-                            "type": "tool_call",
-                            "call_id": tc["id"],
-                            "name": tc["name"],
-                            "arguments": json.loads(tc["arguments_json"]),
-                        }
+                        if choices and choices[0].get("finish_reason") == "tool_calls":
+                            for tc in tool_calls.values():
+                                emitted = True
+                                yield {
+                                    "type": "tool_call",
+                                    "call_id": tc["id"],
+                                    "name": tc["name"],
+                                    "arguments": json.loads(tc["arguments_json"]),
+                                }
 
-                if chunk.get("usage"):
-                    yield {"type": "usage", **chunk["usage"]}
+                        if chunk.get("usage"):
+                            emitted = True
+                            yield {"type": "usage", **chunk["usage"]}
 
-            yield {"type": "done"}
+                    emitted = True
+                    yield {"type": "done"}
+            return
+        except _STREAM_RETRY_ERRORS:
+            if emitted or attempt == _STREAM_RETRY_ATTEMPTS - 1:
+                raise
+            logger.warning(
+                "[stream] openai completions transient read failure before first event; retrying (%s/%s)",
+                attempt + 1,
+                _STREAM_RETRY_ATTEMPTS,
+                exc_info=True,
+            )
+            await asyncio.sleep(0.5 * (attempt + 1))
 
 
 # ── OpenAI Responses API ─────────────────────────────────────
@@ -357,34 +403,52 @@ async def stream_openai_responses(
         body["tools"] = tools
     headers = {"Authorization": f"Bearer {key}"}
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(30, read=300)) as client:
-        logger.info("[stream] openai responses POST %s/responses model=%s", url, form_data.model)
-        async with client.stream(
-            "POST", f"{url}/responses", json=body, headers=headers
-        ) as resp:
-            logger.info("[stream] openai responses status=%s", resp.status_code)
-            resp.raise_for_status()
-            async for line in resp.aiter_lines():
-                if not line.startswith("data: "):
-                    continue
-                event = json.loads(line[6:])
-                etype = event.get("type")
+    emitted = False
+    for attempt in range(_STREAM_RETRY_ATTEMPTS):
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30, read=300)) as client:
+                logger.info("[stream] openai responses POST %s/responses model=%s", url, form_data.model)
+                async with client.stream(
+                    "POST", f"{url}/responses", json=body, headers=headers
+                ) as resp:
+                    logger.info("[stream] openai responses status=%s", resp.status_code)
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        event = json.loads(line[6:])
+                        etype = event.get("type")
 
-                if etype == "response.output_text.delta":
-                    yield {"type": "text_delta", "content": event["delta"]}
+                        if etype == "response.output_text.delta":
+                            emitted = True
+                            yield {"type": "text_delta", "content": event["delta"]}
 
-                elif etype == "response.output_item.done":
-                    item = event["item"]
-                    if item["type"] == "function_call":
-                        yield {
-                            "type": "tool_call",
-                            "call_id": item["call_id"],
-                            "name": item["name"],
-                            "arguments": json.loads(item["arguments"]),
-                        }
+                        elif etype == "response.output_item.done":
+                            item = event["item"]
+                            if item["type"] == "function_call":
+                                emitted = True
+                                yield {
+                                    "type": "tool_call",
+                                    "call_id": item["call_id"],
+                                    "name": item["name"],
+                                    "arguments": json.loads(item["arguments"]),
+                                }
 
-                elif etype == "response.completed":
-                    usage = event.get("response", {}).get("usage", {})
-                    if usage:
-                        yield {"type": "usage", **usage}
-                    yield {"type": "done"}
+                        elif etype == "response.completed":
+                            usage = event.get("response", {}).get("usage", {})
+                            if usage:
+                                emitted = True
+                                yield {"type": "usage", **usage}
+                            emitted = True
+                            yield {"type": "done"}
+            return
+        except _STREAM_RETRY_ERRORS:
+            if emitted or attempt == _STREAM_RETRY_ATTEMPTS - 1:
+                raise
+            logger.warning(
+                "[stream] openai responses transient read failure before first event; retrying (%s/%s)",
+                attempt + 1,
+                _STREAM_RETRY_ATTEMPTS,
+                exc_info=True,
+            )
+            await asyncio.sleep(0.5 * (attempt + 1))

@@ -54,7 +54,7 @@
 	type="button"
 	class="flex items-center justify-center rounded-full p-1 transition-colors duration-100
 		{recording
-			? 'text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-500/10'
+			? 'text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-white/5'
 			: 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}"
 	onclick={toggle}
 >

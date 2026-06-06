@@ -1,0 +1,145 @@
+<script lang="ts">
+	import { fetchJSON } from '$lib/apis';
+	import Modal from './Modal.svelte';
+	import Icon from './Icon.svelte';
+	import { appVersion, lastSeenVersion, showChangelog } from '$lib/stores';
+
+	type ChangelogEntry = { title: string; content: string; raw: string };
+	type VersionData = { date: string; [section: string]: string | ChangelogEntry[] };
+
+	let changelog = $state<Record<string, VersionData> | null>(null);
+	let selectedVersion = $state<string | null>(null);
+	let error = $state(false);
+
+	const versions = $derived.by(() => (changelog ? Object.entries(changelog) : []));
+	const selectedData = $derived.by(() => {
+		if (!versions.length) return null;
+		const version = selectedVersion ?? versions[0][0];
+		return versions.find(([ver]) => ver === version) ?? versions[0];
+	});
+
+	$effect(() => {
+		if ($showChangelog && !changelog && !error) {
+			fetchJSON<Record<string, VersionData>>('/api/changelog')
+				.then((data) => {
+					changelog = data;
+					selectedVersion = Object.keys(data)[0] ?? null;
+				})
+				.catch(() => {
+					error = true;
+				});
+		}
+	});
+
+	function handleClose() {
+		if ($appVersion) {
+			lastSeenVersion.set($appVersion);
+		}
+		showChangelog.set(false);
+	}
+
+	function formatDate(dateStr: string): string {
+		if (!dateStr) return '';
+		const parts = dateStr.split('-');
+		if (parts.length !== 3) return dateStr;
+		const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+		const year = parts[0];
+		const monthIdx = parseInt(parts[1], 10) - 1;
+		const day = parseInt(parts[2], 10);
+		return monthIdx >= 0 && monthIdx < 12 ? `${months[monthIdx]} ${day}, ${year}` : dateStr;
+	}
+</script>
+
+{#if $showChangelog}
+	<Modal onclose={handleClose} class="w-full max-w-3xl mx-4 md:mx-0 flex flex-col max-h-[52vh]">
+		<div class="flex items-center gap-3 px-4 pt-4 pb-2 shrink-0">
+			<div class="min-w-0 flex-1">
+				<h2 class="text-sm font-medium text-gray-900 dark:text-white">What's New</h2>
+				{#if selectedData}
+					{@const [ver, data] = selectedData}
+					<p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-600">v{ver} · {formatDate(data.date)}</p>
+				{/if}
+			</div>
+
+			<button
+				class="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-600 dark:hover:bg-white/6 dark:hover:text-gray-300 transition-colors duration-75"
+				onclick={handleClose}
+				aria-label="Close"
+			>
+				<Icon name="xmark" size={14} />
+			</button>
+		</div>
+
+		{#if versions.length > 1}
+			<div class="flex gap-1 overflow-x-auto px-3 pb-2 shrink-0 scrollbar-hidden">
+				{#each versions as [ver], i (ver)}
+					<button
+						class="h-7 shrink-0 rounded-lg px-2 text-[11px] transition-colors duration-75
+							{(selectedVersion ?? versions[0][0]) === ver
+								? 'bg-gray-100 text-gray-900 dark:bg-white/6 dark:text-white'
+								: 'text-gray-400 hover:text-gray-700 dark:text-gray-600 dark:hover:text-gray-300'}"
+						onclick={() => (selectedVersion = ver)}
+					>
+						v{ver}{#if i === 0}<span class="ml-1 font-sans text-[9px] text-gray-300 dark:text-gray-700">latest</span>{/if}
+					</button>
+				{/each}
+			</div>
+		{/if}
+
+		<div class="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+			{#if selectedData}
+				{@const [_ver, data] = selectedData}
+				<div class="space-y-6">
+					{#each Object.entries(data).filter(([key]) => key !== 'date') as [section, items]}
+						{#if Array.isArray(items) && items.length > 0}
+							<section>
+								<h3 class="mb-2 text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-600">{section}</h3>
+								<ul class="space-y-2.5">
+									{#each items as entry}
+										<li class="flex gap-2.5 text-xs leading-relaxed">
+											<span class="mt-[0.45em] h-1 w-1 shrink-0 rounded-full bg-gray-300 dark:bg-gray-700"></span>
+											<div class="min-w-0">
+												{#if entry.title}
+													<span class="font-medium text-gray-900 dark:text-white">{entry.title}</span>
+													{#if entry.content}
+														<span class="ml-1 text-gray-500 dark:text-gray-400">{entry.content}</span>
+													{/if}
+												{:else}
+													<span class="text-gray-600 dark:text-gray-400">{entry.content || entry.raw}</span>
+												{/if}
+											</div>
+										</li>
+									{/each}
+								</ul>
+							</section>
+						{/if}
+					{/each}
+				</div>
+			{:else if error}
+				<div class="flex flex-col items-center justify-center py-16 gap-2 text-center">
+					<p class="text-xs text-gray-500 dark:text-gray-400">Couldn't load release notes.</p>
+					<button
+						class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 dark:bg-white/6 dark:text-gray-400 dark:hover:text-white transition-colors duration-75"
+						onclick={() => (error = false)}
+					>
+						Retry
+					</button>
+				</div>
+			{:else}
+				<div class="flex flex-col items-center justify-center py-16 gap-3">
+					<div class="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600 dark:border-gray-700 dark:border-t-gray-400"></div>
+					<span class="text-[11px] text-gray-400 dark:text-gray-600">Loading release notes...</span>
+				</div>
+			{/if}
+		</div>
+
+		<div class="flex items-center justify-end px-4 pt-1 pb-4 shrink-0">
+			<button
+				class="text-[13px] text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-100"
+				onclick={handleClose}
+			>
+				Done
+			</button>
+		</div>
+	</Modal>
+{/if}

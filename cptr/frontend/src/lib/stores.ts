@@ -73,6 +73,7 @@ export interface UserPreferences {
 	locale: string;
 	workspaceOrder?: string[]; // ordered paths for sidebar drag-reorder
 	keybindings?: Record<string, string>; // user-customised keyboard shortcuts
+	version?: string; // last seen app version for changelog
 }
 
 export type Theme = 'dark' | 'light' | 'system';
@@ -120,6 +121,9 @@ export const sidebarOpen = writable(typeof window !== 'undefined' ? window.inner
 export const sidebarWidth = writable(220);
 export const theme = writable<Theme>('dark');
 export const toolApprovalMode = writable<ToolApprovalMode>('auto');
+export const appVersion = writable('');
+export const lastSeenVersion = writable('');
+export const showChangelog = writable(false);
 /** @deprecated Use toolApprovalMode */
 export const autoApproveTools = {
 	subscribe: toolApprovalMode.subscribe,
@@ -264,6 +268,7 @@ function persistPreferences(): void {
 			locale: i18next.language,
 			workspaceOrder: get(workspaceOrder),
 			keybindings: get(keybindings),
+			version: get(lastSeenVersion),
 		};
 		savePreferences(prefs as unknown as Record<string, unknown>).catch(() => {});
 	}, 300);
@@ -280,6 +285,7 @@ function subscribeForPersistence() {
 	toolApprovalMode.subscribe(() => { if (get(stateLoaded)) persistPreferences(); });
 	workspaceOrder.subscribe(() => { if (get(stateLoaded)) persistPreferences(); });
 	keybindings.subscribe(() => { if (get(stateLoaded)) persistPreferences(); });
+	lastSeenVersion.subscribe(() => { if (get(stateLoaded)) persistPreferences(); });
 	i18next.on('languageChanged', () => { if (get(stateLoaded)) persistPreferences(); });
 }
 
@@ -301,6 +307,7 @@ export async function loadPreferences(): Promise<void> {
 		if (prefs.locale) changeLocale(prefs.locale as string);
 		if (Array.isArray(prefs.workspaceOrder)) workspaceOrder.set(prefs.workspaceOrder as string[]);
 		if (prefs.keybindings) loadKeybindings(prefs.keybindings as Record<string, string>);
+		if (prefs.version) lastSeenVersion.set(prefs.version as string);
 	} catch {
 		// First run, no preferences yet
 	}

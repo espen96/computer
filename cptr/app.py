@@ -41,7 +41,7 @@ async def startup():
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
     # Skip auth for: auth endpoints, health, static assets, HTML pages
-    if path.startswith("/api/auth") or path == "/api/health" or path == "/api/config" or path == "/manifest.json":
+    if path.startswith("/api/auth") or path == "/api/health" or path == "/api/config" or path == "/api/changelog" or path == "/manifest.json":
         return await call_next(request)
     if path.startswith("/_app/") or not path.startswith("/api/"):
         return await call_next(request)
@@ -173,6 +173,13 @@ app.include_router(workspace_router)
 async def health():
     import os
     return {"status": "ok", "uptime_seconds": int(time.time() - START_TIME), "pid": os.getpid()}
+
+
+@app.get("/api/changelog")
+async def get_changelog():
+    """Return parsed CHANGELOG.md as structured JSON (max 5 versions)."""
+    from cptr.utils.changelog import CHANGELOG
+    return {key: CHANGELOG[key] for idx, key in enumerate(CHANGELOG) if idx < 5}
 
 
 # PWA manifest (backend-driven so each instance has its own identity)

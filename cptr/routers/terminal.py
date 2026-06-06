@@ -1,4 +1,4 @@
-"""Terminal API - WebSocket and REST endpoints for PTY sessions."""
+"""Endpoints for spawning, managing, and interacting with terminal PTY sessions."""
 
 from __future__ import annotations
 

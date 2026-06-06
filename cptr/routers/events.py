@@ -12,12 +12,14 @@ import os
 import platform
 import subprocess
 import sys
+import threading
 from pathlib import Path
-from typing import Optional
+from typing import Optional, NamedTuple
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
+from watchdog.observers.polling import PollingObserver
 
 from cptr.utils.terminal import manager
 from cptr.utils.config import check_access
@@ -29,16 +31,24 @@ router = APIRouter(prefix="/api/events", tags=["events"])
 # ── Filesystem watcher ────────────────────────────────────────────
 
 
+def _create_observer():
+    if platform.system() == "Darwin":
+        return PollingObserver()
+    return Observer()
+
+
 class _ChangeCollector(FileSystemEventHandler):
     """Collects fs events into a set for debounced delivery."""
 
     def __init__(self) -> None:
         self._changes: set[str] = set()
+        self._lock = threading.Lock()
 
     def _record(self, event: FileSystemEvent) -> None:
         path = event.src_path
-        self._changes.add(str(Path(path).parent))
-        self._changes.add(path)
+        with self._lock:
+            self._changes.add(str(Path(path).parent))
+            self._changes.add(path)
 
     def on_created(self, event: FileSystemEvent) -> None:
         self._record(event)
@@ -52,64 +62,139 @@ class _ChangeCollector(FileSystemEventHandler):
     def on_moved(self, event: FileSystemEvent) -> None:
         self._record(event)
         if hasattr(event, "dest_path"):
-            self._changes.add(str(Path(event.dest_path).parent))
-            self._changes.add(event.dest_path)
+            with self._lock:
+                self._changes.add(str(Path(event.dest_path).parent))
+                self._changes.add(event.dest_path)
 
     def drain(self) -> list[str]:
-        paths = list(self._changes)
-        self._changes.clear()
+        with self._lock:
+            paths = list(self._changes)
+            self._changes.clear()
         return paths
+
+
+class _WatchEntry(NamedTuple):
+    observer: Observer
+    handler: _ChangeCollector
+    watch: object
+    subscribers: set[asyncio.Queue[list[str]]]
+
+
+_watch_registry: dict[str, _WatchEntry] = {}
+_watch_registry_lock = asyncio.Lock()
+
+
+async def _subscribe_to_path(path: str) -> tuple[str, asyncio.Queue[list[str]]]:
+    """Subscribe this connection to a shared filesystem watch."""
+    resolved = str(Path(path).resolve())
+    queue: asyncio.Queue[list[str]] = asyncio.Queue(maxsize=32)
+
+    async with _watch_registry_lock:
+        entry = _watch_registry.get(resolved)
+        if entry is None:
+            observer = _create_observer()
+            observer.daemon = True
+            handler = _ChangeCollector()
+            watch = observer.schedule(handler, resolved, recursive=True)
+            observer.start()
+            entry = _WatchEntry(observer, handler, watch, set())
+            _watch_registry[resolved] = entry
+        entry.subscribers.add(queue)
+
+    return resolved, queue
+
+
+async def _unsubscribe_from_path(path: str, queue: asyncio.Queue[list[str]]) -> None:
+    """Remove a filesystem watch subscription and stop idle observers."""
+    async with _watch_registry_lock:
+        entry = _watch_registry.get(path)
+        if entry is None:
+            return
+
+        entry.subscribers.discard(queue)
+        if entry.subscribers:
+            return
+
+        _watch_registry.pop(path, None)
+        try:
+            entry.observer.unschedule(entry.watch)
+        except Exception:
+            pass
+        try:
+            entry.observer.stop()
+            entry.observer.join(timeout=2)
+        except Exception:
+            pass
+
+
+async def _dispatch_fs_changes() -> None:
+    """Fan out debounced filesystem changes from shared watchers."""
+    while True:
+        await asyncio.sleep(1.0)
+
+        async with _watch_registry_lock:
+            entries = list(_watch_registry.items())
+
+        for path, entry in entries:
+            paths = entry.handler.drain()
+            if not paths:
+                continue
+
+            if sys.platform == "win32":
+                paths = [p.replace("\\", "/") for p in paths]
+
+            for queue in list(entry.subscribers):
+                try:
+                    queue.put_nowait(paths)
+                except asyncio.QueueFull:
+                    logger.debug("Dropped fs_change event for slow subscriber on %s", path)
+
+
+_fs_dispatch_task: Optional[asyncio.Task] = None
+
+
+async def _ensure_fs_dispatcher() -> None:
+    global _fs_dispatch_task
+    if _fs_dispatch_task is None or _fs_dispatch_task.done():
+        _fs_dispatch_task = asyncio.create_task(_dispatch_fs_changes())
 
 
 async def _fs_watcher_loop(ws: WebSocket, initial_path: str, path_holder: dict) -> None:
     """Watch filesystem and push fs_change events."""
-    observer = Observer()
-    observer.daemon = True
-    observer.start()
-
-    handler = _ChangeCollector()
     target = str(Path(initial_path).resolve())
     path_holder["current"] = target
 
     try:
-        watch = observer.schedule(handler, target, recursive=True)
+        await _ensure_fs_dispatcher()
+        current_path, queue = await _subscribe_to_path(target)
     except Exception as e:
         logger.warning(f"Failed to watch {target}: {e}")
         return
 
     try:
         while True:
-            await asyncio.sleep(1.0)
-
             # Check if path changed (from receive loop)
             new_path = path_holder.get("pending")
             if new_path:
                 del path_holder["pending"]
                 resolved = str(Path(new_path).resolve())
                 if resolved != path_holder["current"] and Path(resolved).is_dir():
-                    try:
-                        observer.unschedule(watch)
-                    except Exception:
-                        pass
-                    handler = _ChangeCollector()
-                    watch = observer.schedule(handler, resolved, recursive=True)
+                    await _unsubscribe_from_path(current_path, queue)
+                    current_path, queue = await _subscribe_to_path(resolved)
                     path_holder["current"] = resolved
                     logger.info(f"FS watch path changed to {resolved}")
 
-            paths = handler.drain()
-            if paths:
-                # Normalize to forward slashes so the frontend can compare with /
-                if sys.platform == "win32":
-                    paths = [p.replace("\\", "/") for p in paths]
-                try:
-                    await ws.send_json({"type": "fs_change", "paths": paths})
-                except Exception:
-                    break
+            try:
+                paths = await asyncio.wait_for(queue.get(), timeout=1.0)
+            except asyncio.TimeoutError:
+                continue
+
+            try:
+                await ws.send_json({"type": "fs_change", "paths": paths})
+            except Exception:
+                break
     finally:
-        try:
-            observer.stop()
-        except Exception:
-            pass
+        await _unsubscribe_from_path(current_path, queue)
 
 
 # ── Port scanning ─────────────────────────────────────────────────

@@ -4,7 +4,7 @@ import uvicorn
 
 @click.group()
 def cli():
-    """cptr - your computer, from anywhere."""
+    """Your computer, from anywhere."""
     pass
 
 

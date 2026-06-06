@@ -10,12 +10,13 @@
 	import QuickOpen from '$lib/components/QuickOpen.svelte';
 	import SettingsModal from '$lib/components/SettingsModal.svelte';
 	import AuthScreen from '$lib/components/AuthScreen.svelte';
+	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 	import { Toaster } from 'svelte-sonner';
-	import { activeTab, currentWorkspace, stateLoaded, initState, gitReviewOpen, isGitRepo, splitActive, splitCurrentTab, closeGroup } from '$lib/stores';
+	import { activeTab, currentWorkspace, stateLoaded, initState, gitReviewOpen, isGitRepo, splitActive, splitCurrentTab, closeGroup, appVersion, lastSeenVersion, showChangelog } from '$lib/stores';
 	import { matchKeybinding, executeAction } from '$lib/stores/keybindings';
 	import { systemEvents } from '$lib/stores/systemEvents.svelte';
 	import { socketStore } from '$lib/stores/socket.svelte';
-	import { setSession } from '$lib/session';
+	import { setSession, clearSession } from '$lib/session';
 	import { getSession, getConfig } from '$lib/apis/auth';
 	import { getGitStatus } from '$lib/apis/git';
 	import { t } from '$lib/i18n';
@@ -73,6 +74,23 @@
 
 	let startupToken = $state('');
 
+	$effect(() => {
+		if ($stateLoaded && $appVersion) {
+			const currentVer = $appVersion;
+			const lastSeen = $lastSeenVersion;
+			if (lastSeen !== currentVer) {
+				if (!lastSeen) {
+					// First-time load: initialize the last seen version to the current version so we don't pop up immediately
+					lastSeenVersion.set(currentVer);
+				} else {
+					// Update: record this version as seen before showing the changelog so it doesn't reopen repeatedly.
+					lastSeenVersion.set(currentVer);
+					showChangelog.set(true);
+				}
+			}
+		}
+	});
+
 	async function checkAuth() {
 		try {
 			const params = new URLSearchParams(window.location.search);
@@ -86,6 +104,10 @@
 			}
 
 			const auth = await getSession();
+
+			getConfig().then(cfg => {
+				appVersion.set(cfg.version);
+			}).catch(() => {});
 
 			if (auth.authenticated) {
 				setSession({
@@ -107,6 +129,7 @@
 		} catch {
 			authState = 'authenticated';
 			initState();
+			refreshChatState();
 		}
 	}
 
@@ -231,6 +254,7 @@
 	{#if showSettings}
 		<SettingsModal onclose={() => showSettings = false} />
 	{/if}
+	<ChangelogModal />
 {:else}
 	<div class="flex items-center justify-center h-dvh bg-white dark:bg-black">
 		<div class="w-5 h-5 border-2 border-gray-300 border-t-gray-600 dark:border-gray-700 dark:border-t-gray-400 rounded-full animate-spin"></div>

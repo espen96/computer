@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   IMAGE: ghcr.io/${{ github.repository }}
 
@@ -14,6 +18,7 @@ permissions:
 
 jobs:
   detect-version-change:
+    if: github.ref == 'refs/heads/release'
     runs-on: ubuntu-latest
     outputs:
       version_changed: ${{ steps.check.outputs.changed }}
@@ -58,9 +63,8 @@ jobs:
             echo "No version change detected"
           fi
 
-  build-and-push:
-    needs: detect-version-change
-    if: needs.detect-version-change.outputs.version_changed == 'true'
+  build-and-push-dev:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -76,7 +80,45 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
+      - name: Extract metadata (dev tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=dev
+            type=sha,prefix=dev-
+
+      - name: Build and push dev image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-and-push-release:
+    needs: detect-version-change
+    if: github.ref == 'refs/heads/release' && needs.detect-version-change.outputs.version_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (release tags, labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -85,9 +127,8 @@ jobs:
             type=raw,value=latest
             type=raw,value=${{ needs.detect-version-change.outputs.version }}
             type=semver,pattern={{major}}.{{minor}},value=v${{ needs.detect-version-change.outputs.version }}
-            type=sha,prefix=
 
-      - name: Build and push
+      - name: Build and push release image
         uses: docker/build-push-action@v6
         with:
           context: .

@@ -8,6 +8,8 @@
 		reorderWorkspaces,
 		sidebarOpen,
 		sidebarWidth,
+		appVersion,
+		showChangelog,
 	} from '$lib/stores';
 	import Sortable from 'sortablejs';
 	import Icon from './Icon.svelte';
@@ -29,7 +31,7 @@
 	let showAdmin = $state(false);
 	let wsMenuPath = $state<string | null>(null);
 	let wsMenuAnchor = $state<HTMLElement | null>(null);
-	let appVersion = $state('');
+
 	let menuButtonEl: HTMLButtonElement | undefined = $state();
 	let wsListEl: HTMLDivElement | undefined = $state();
 	let sortable: Sortable | null = null;
@@ -118,9 +120,6 @@
 	}
 
 	onMount(() => {
-		getWelcome()
-			.then(d => { appVersion = d.version || ''; })
-			.catch(() => {});
 
 		// Enable drag-reorder on non-touch devices
 		if (wsListEl && !isTouchDevice()) {
@@ -218,7 +217,7 @@
 			{/if}
 		</div>
 
-		<!-- Settings - pinned bottom -->
+		<!-- Settings and profile footer pinned to the bottom -->
 		<div class="relative px-1 pb-0.5 shrink-0">
 
 			<button
@@ -232,8 +231,13 @@
 					class="w-5 h-5 rounded-full object-cover shrink-0"
 				/>
 				<span class="truncate">{$session?.display_name || $session?.username || $t('sidebar.settings')}</span>
-				{#if appVersion}
-					<span class="ml-auto text-[10px] text-gray-400 dark:text-gray-600 font-mono">v{appVersion}</span>
+				{#if $appVersion}
+					<button
+						onclick={(e) => { e.stopPropagation(); showChangelog.set(true); }}
+						class="ml-auto text-[10px] text-gray-400 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 font-mono hover:underline cursor-pointer"
+					>
+						v{$appVersion}
+					</button>
 				{/if}
 			</button>
 		</div>

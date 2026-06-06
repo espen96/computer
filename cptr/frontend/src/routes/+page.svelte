@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { currentWorkspace, activeTab, workspaceList, addWorkspace, loadWorkspace, gitReviewOpen, setActiveGroup, setSplitRatio, moveTabToGroup, openInSplit, openTabInSplit, setSplitDirection } from '$lib/stores';
+	import { currentWorkspace, activeTab, workspaceList, addWorkspace, loadWorkspace, gitReviewOpen, setActiveGroup, setSplitRatio, moveTabToGroup, openInSplit, openTabInSplit, setSplitDirection, appVersion, showChangelog } from '$lib/stores';
 	import { splitActive } from '$lib/stores';
 	import type { Tab, EditorGroup, WorkspaceState } from '$lib/stores';
 	import { t } from '$lib/i18n';
@@ -247,8 +247,13 @@
 			<div class="mb-4">
 				<div class="flex items-baseline gap-2">
 					<h1 class="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">cptr</h1>
-					{#if welcomeData?.version}
-						<span class="text-[11px] text-gray-400 dark:text-gray-600 font-mono">v{welcomeData.version}</span>
+					{#if $appVersion}
+						<button
+							onclick={() => showChangelog.set(true)}
+							class="text-[11px] text-gray-400 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 font-mono hover:underline cursor-pointer"
+						>
+							v{$appVersion}
+						</button>
 					{/if}
 				</div>
 				{#if welcomeData?.hostname}

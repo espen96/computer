@@ -1,4 +1,4 @@
-"""File browser API - directory listing endpoint."""
+"""Endpoints for browsing directories and managing files within the workspace."""
 
 from __future__ import annotations
 

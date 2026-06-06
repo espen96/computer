@@ -1,17 +1,6 @@
 <script lang="ts">
-    import { onMount } from "svelte";
-    import { getWelcome } from "$lib/apis/state";
     import { t } from "$lib/i18n";
-
-    let appVersion = $state("");
-
-    onMount(() => {
-        getWelcome()
-            .then((d) => {
-                appVersion = d.version || "";
-            })
-            .catch(() => {});
-    });
+    import { appVersion, showChangelog } from "$lib/stores";
 </script>
 
 <h2 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
@@ -20,12 +9,18 @@
 
 <div>
     <div class="flex items-baseline gap-2">
-        <span class="text-xs font-semibold text-gray-900 dark:text-white"
-            >cptr</span
+        <a
+            href="https://github.com/open-webui/computer"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-xs font-semibold text-gray-900 dark:text-white hover:underline"
+            >cptr</a
         >
-        {#if appVersion}
-            <span class="text-[11px] text-gray-400 dark:text-gray-600 font-mono"
-                >v{appVersion}</span
+        {#if $appVersion}
+            <button
+                onclick={() => showChangelog.set(true)}
+                class="text-[11px] text-gray-400 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 font-mono hover:underline cursor-pointer"
+                >v{$appVersion}</button
             >
         {/if}
     </div>

@@ -1,7 +1,7 @@
 [project]
 name = "cptr"
-version = "0.0.1"
-description = "Your computer, from anywhere - code, manage, and control your machine from the web."
+version = "0.1.0"
+description = "Your computer, from anywhere. Code, manage, and control your machine from the web."
 license = {file = "LICENSE"}
 readme = "README.md"
 requires-python = ">=3.9"
