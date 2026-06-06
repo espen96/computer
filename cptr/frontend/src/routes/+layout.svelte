@@ -256,11 +256,11 @@
 {:else if $stateLoaded}
 	<div
 		class="h-screen max-h-[100dvh] flex overflow-hidden font-sans antialiased text-gray-900 bg-white dark:text-gray-100 dark:bg-black"
-		style={appHeight ? `height: ${appHeight};` : ''}
+		style={appHeight ? `height:${appHeight};` : ''}
 	>
 		<Sidebar />
 
-		<div class="flex flex-col flex-1 min-w-0">
+		<div class="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 			{#if !$currentWorkspace}
 				<Bar />
 			{/if}
