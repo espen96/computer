@@ -322,8 +322,8 @@ def _load_system_prompt(workspace: str) -> str:
     if instructions:
         base += f"\n\n<instructions>\n{instructions}\n</instructions>"
         base += (
-            "\n\nThe above <instructions> were loaded from files in the workspace root "
-            "(MEMORY.md, AGENTS.md, CLAUDE.md). These files persist across sessions. "
+            "\n\nThe above <instructions> were loaded from instruction files in the workspace root. "
+            "These files persist across sessions. "
             "You can update them with your file tools to save learnings, decisions, or "
             "project conventions for future sessions."
         )

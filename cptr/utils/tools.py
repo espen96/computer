@@ -295,22 +295,27 @@ async def _search_python(query: str, full: Path, case_insensitive: bool) -> str:
 
 
 async def create_file(
-    path: str,
-    content: str,
+    path: str = "",
+    content: str = "",
     overwrite: bool = False,
     artifact_type: str = "",
     *,
     workspace: str,
 ) -> str:
-    """Create a new file. Errors if file already exists unless overwrite is true.
-    For non-trivial tasks (multi-file changes, ambiguous requirements, architectural decisions),
-    create an implementation plan first with artifact_type='implementation_plan'. Write the plan
-    as markdown, then wait for the user to review before making changes.
-    :param path: Path relative to workspace root.
+    """Create a new file, or create an artifact for user review.
+    When artifact_type is set, path is optional. The artifact is saved automatically.
+    :param path: Path relative to workspace root (optional for artifacts).
     :param content: File contents to write.
     :param overwrite: Set to true to overwrite an existing file.
     :param artifact_type: Set to 'implementation_plan' to present a plan for user review before coding.
     """
+    # Artifact-only: skip workspace file write
+    if artifact_type and not path:
+        return f"Artifact created ({len(content)} bytes)"
+
+    if not path:
+        return "Error: path is required when artifact_type is not set."
+
     full = _resolve_path(path, workspace)
     if full.is_file() and not overwrite:
         return f"Error: file already exists: {path}. Use overwrite=true or edit_file to modify."
