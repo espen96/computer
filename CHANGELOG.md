@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-06-07
+
+### Fixed
+
+- 📦 **PyPI install actually works now.** Hatchling's `exclude = ["cptr/frontend"]` was taking precedence over the `artifacts` directive, causing every published wheel to ship without the frontend build. The app returned `{"detail":"Not Found"}` on all non-API routes. Changed to granular excludes that skip only source/dev files while preserving `cptr/frontend/build`.
+
 ## [0.1.7] - 2026-06-07
 
 ### Fixed
