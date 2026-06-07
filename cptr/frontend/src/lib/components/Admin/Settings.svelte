@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { getAdminConfig, updateConfig as apiUpdateConfig } from '$lib/apis/admin';
 	import { t } from '$lib/i18n';
+	import ToggleSwitch from '$lib/components/ToggleSwitch.svelte';
 
 	let config = $state<Record<string, any>>({});
 	let loading = $state(true);
@@ -63,19 +64,11 @@
 
 		<div class="flex items-center justify-between h-8">
 			<span class="text-[13px] text-gray-700 dark:text-gray-300">{$t('admin.allowSignUp')}</span>
-			<button
-				class="relative w-8 h-[18px] rounded-full transition-colors duration-150
-				{config['auth.signup_enabled'] ? 'bg-gray-900 dark:bg-white' : 'bg-gray-300 dark:bg-gray-700'}"
-				onclick={() => updateConfig('auth.signup_enabled', !config['auth.signup_enabled'])}
+			<ToggleSwitch
+				value={config['auth.signup_enabled']}
+				onchange={(v) => updateConfig('auth.signup_enabled', v)}
 				disabled={saving}
-			>
-				<span
-					class="absolute top-[2px] w-[14px] h-[14px] rounded-full transition-all duration-150
-					{config['auth.signup_enabled']
-						? 'left-[17px] bg-white dark:bg-black'
-						: 'left-[2px] bg-white dark:bg-gray-500'}"
-				></span>
-			</button>
+			/>
 		</div>
 		<p class="text-[11px] text-gray-400 dark:text-gray-600 mt-0.5">
 			{config['auth.signup_enabled'] ? $t('admin.signUpEnabled') : $t('admin.signUpDisabled')}
@@ -87,19 +80,11 @@
 		<!-- Enable/disable toggle -->
 		<div class="flex items-center justify-between h-8">
 			<span class="text-[13px] text-gray-700 dark:text-gray-300">{$t('admin.webEnabled')}</span>
-			<button
-				class="relative w-8 h-[18px] rounded-full transition-colors duration-150
-				{config['web.enabled'] !== false ? 'bg-gray-900 dark:bg-white' : 'bg-gray-300 dark:bg-gray-700'}"
-				onclick={() => updateConfig('web.enabled', config['web.enabled'] === false)}
+			<ToggleSwitch
+				value={config['web.enabled'] !== false}
+				onchange={() => updateConfig('web.enabled', config['web.enabled'] === false)}
 				disabled={saving}
-			>
-				<span
-					class="absolute top-[2px] w-[14px] h-[14px] rounded-full transition-all duration-150
-					{config['web.enabled'] !== false
-						? 'left-[17px] bg-white dark:bg-black'
-						: 'left-[2px] bg-white dark:bg-gray-500'}"
-				></span>
-			</button>
+			/>
 		</div>
 		<p class="text-[11px] text-gray-400 dark:text-gray-600 mt-0.5">
 			{config['web.enabled'] !== false ? $t('admin.webEnabledHint') : $t('admin.webDisabledHint')}

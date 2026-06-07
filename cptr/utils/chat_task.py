@@ -23,7 +23,7 @@ from cptr.utils.ai import (
 )
 from cptr.utils.config import _get_jwt_secret, now_ms
 from cptr.utils.crypto import decrypt_key
-from cptr.utils.tools import TOOLS, execute_tool, get_tool_list
+from cptr.utils.tools import TOOLS, execute_tool, get_tool_list, _fn_to_schema, create_artifact
 from cptr.utils.chat_export import export_chat_to_file
 from cptr.utils.json_parser import extract_json
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 PLAN_MODE_PROMPT = (
     "[Plan Mode] Research the codebase with read-only tools, then present your plan "
-    "using create_file with artifact_type='implementation_plan'. Wait for approval before coding."
+    "using create_artifact. Wait for approval before coding."
 )
 
 # ── Task registry ───────────────────────────────────────────
@@ -308,13 +308,8 @@ def _load_system_prompt(workspace: str) -> str:
             "You are a helpful coding assistant. "
             "You have access to tools to read, search, and modify files in the workspace. "
             "Use them to help the user with their coding tasks.\n\n"
-            "## Planning for Complex Tasks\n"
-            "For non-trivial tasks (multi-file changes, architectural decisions, ambiguous requirements), "
-            "FIRST investigate the codebase, then create an implementation plan artifact by calling "
-            "create_file with artifact_type='implementation_plan'. Write the plan as structured markdown "
-            "with: Background, Proposed Changes (grouped by component/file), and Verification Steps. "
-            "Wait for the user to review before making code changes. "
-            "For simple/clear tasks (typo fixes, small edits, direct questions), skip the plan and act directly."
+            "For complex tasks, create an implementation plan first using "
+            "create_artifact, then wait for approval before coding."
         )
 
     # Load MEMORY.md / AGENTS.md / CLAUDE.md from workspace root
@@ -623,11 +618,14 @@ async def run_chat_task(
         chat_obj = await Chat.get_by_id(chat_id)
         chat_params = (chat_obj.meta or {}).get("params", {}) if chat_obj else {}
 
-        # Plan mode: inject prompt
+        # Plan mode: strip write tools, inject prompt as user message (not system, to preserve cache)
         plan_mode = chat_params.get("plan_mode", False)
         if plan_mode:
+            tools = [t for t in tools if TOOLS.get(t["name"], {}).get("auto")]
+            # Inject create_artifact (only available in plan mode)
+            tools.append(_fn_to_schema("create_artifact", create_artifact))
             messages.append({"role": "user", "content": PLAN_MODE_PROMPT})
-            logger.info("[task %s] plan mode active", message_id[:8])
+            logger.info("[task %s] plan mode active, %d tools available", message_id[:8], len(tools))
 
         # Tool approval mode: 'ask' | 'auto' | 'full'
         #   ask  = require approval for ALL tools (including reads)
@@ -681,7 +679,10 @@ async def run_chat_task(
                     )
 
                     if should_auto:
-                        result = await execute_tool(name, event["arguments"], workspace)
+                        if name == "create_artifact":
+                            result = await create_artifact(**event["arguments"], workspace=workspace)
+                        else:
+                            result = await execute_tool(name, event["arguments"], workspace)
                         item["status"] = "completed"
                         output_items.append(item)
                         result_item = {
@@ -696,25 +697,23 @@ async def run_chat_task(
                         await emit(output=result_item)
                         _sync_state()
 
-                        # Artifact: write to artifacts dir and emit card
+                        # Artifact UI card: detect create_artifact or create_file with artifact_type
                         args = event["arguments"]
                         artifact_type = args.get("artifact_type", "")
+                        if name == "create_artifact":
+                            artifact_type = artifact_type or "implementation_plan"
                         if artifact_type:
-                            from datetime import datetime, timezone
-
-                            ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-                            artifact_dir = Path(workspace) / ".cptr" / "artifacts" / chat_id
-                            artifact_dir.mkdir(parents=True, exist_ok=True)
-                            artifact_path = artifact_dir / f"{ts}_{artifact_type}.md"
-                            artifact_path.write_text(args.get("content", ""))
+                            # Parse metadata from tool result or build from args
+                            try:
+                                meta = json.loads(result)
+                            except (json.JSONDecodeError, TypeError):
+                                meta = {}
                             artifact_item = {
                                 "type": "artifact",
                                 "artifact_type": artifact_type,
-                                "title": Path(args.get("path", artifact_type))
-                                .stem.replace("_", " ")
-                                .title(),
+                                "title": meta.get("title") or args.get("title") or artifact_type.replace("_", " ").title(),
                                 "content": args.get("content", ""),
-                                "path": str(artifact_path.relative_to(Path(workspace))),
+                                "path": meta.get("path", ""),
                             }
                             output_items.append(artifact_item)
                             await emit(output=artifact_item)

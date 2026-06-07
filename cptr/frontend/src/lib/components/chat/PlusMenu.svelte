@@ -3,6 +3,7 @@
 	import { toolApprovalMode, planMode, type ToolApprovalMode } from '$lib/stores';
 	import { tooltip } from '$lib/tooltip';
 	import Icon from '../Icon.svelte';
+	import ToggleSwitch from '../ToggleSwitch.svelte';
 
 	interface Props {
 		onfiles: (files: FileList) => void;
@@ -167,16 +168,7 @@
 						<line x1="9" y1="17" x2="15" y2="17" />
 					</svg>
 					<span class="flex-1 text-left truncate">Plan mode</span>
-					<!-- Toggle switch -->
-					<div
-						class="relative w-7 h-4 rounded-full transition-colors duration-150
-							{$planMode ? 'bg-blue-500' : 'bg-gray-300 dark:bg-white/10'}"
-					>
-						<div
-							class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow-sm transition-transform duration-150
-								{$planMode ? 'translate-x-3' : 'translate-x-0'}"
-						></div>
-					</div>
+					<ToggleSwitch value={$planMode} onchange={(v) => planMode.set(v)} />
 				</button>
 
 				<div class="h-px bg-gray-100/50 dark:bg-white/3 mx-1 my-0.5"></div>

@@ -344,6 +344,41 @@ async def create_file(
     return f"Created {path} ({len(content)} bytes, {len(content.splitlines())} lines)"
 
 
+async def create_artifact(
+    content: str,
+    artifact_type: str = "implementation_plan",
+    title: str = "",
+    *,
+    workspace: str,
+) -> str:
+    """Create an artifact for user review. Use for implementation plans and analysis.
+    :param content: Artifact content as markdown.
+    :param artifact_type: Type of artifact, e.g. 'implementation_plan'.
+    :param title: Display title for the artifact card.
+    """
+    from datetime import datetime, timezone
+
+    artifact_type = artifact_type or "implementation_plan"
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    artifact_dir = Path(workspace) / ".cptr" / "artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = artifact_dir / f"{ts}_{artifact_type}.md"
+
+    def _write():
+        artifact_path.write_text(content)
+
+    await asyncio.to_thread(_write)
+
+    display_title = title or artifact_type.replace("_", " ").title()
+    rel_path = str(artifact_path.relative_to(Path(workspace)))
+    return json.dumps({
+        "artifact_type": artifact_type,
+        "title": display_title,
+        "path": rel_path,
+        "bytes": len(content),
+    })
+
+
 async def write_file(path: str, content: str, *, workspace: str) -> str:
     """Write or create a file (full content). Prefer edit_file for modifications.
     :param path: Path relative to workspace root.
