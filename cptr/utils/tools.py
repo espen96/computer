@@ -49,6 +49,14 @@ async def _collect_bg_output(task_id: str, proc: asyncio.subprocess.Process):
 # ── Helper ──────────────────────────────────────────────────
 
 
+def _is_dotenv(path: Path) -> bool:
+    """Return True if the path refers to a .env file (e.g. .env, .env.local)."""
+    return path.name == ".env" or path.name.startswith(".env.")
+
+
+_DOTENV_ERROR = "Error: access to .env files is not allowed for security reasons."
+
+
 def _human_size(size: int) -> str:
     """Format byte size for display."""
     for unit in ("B", "KB", "MB", "GB"):
@@ -83,6 +91,8 @@ async def read_file(
     :param end_line: Last line to read (inclusive, 0 = to end of file).
     """
     full = _resolve_path(path, workspace)
+    if _is_dotenv(full):
+        return _DOTENV_ERROR
     if not full.is_file():
         return f"Error: file not found: {path}"
 
@@ -213,6 +223,8 @@ async def _search_rg(
 ) -> str:
     """Search using ripgrep."""
     args = ["rg", "--no-heading", "--max-count=50", "--color=never"]
+    # Never search .env files
+    args.extend(["--glob", "!.env", "--glob", "!.env.*"])
     if not regex:
         args.append("--fixed-strings")
     if case_insensitive:
@@ -277,6 +289,8 @@ async def _search_python(query: str, full: Path, case_insensitive: bool) -> str:
             dirs[:] = [d for d in dirs if d not in ignore]
             for fname in files:
                 fpath = Path(root) / fname
+                if _is_dotenv(fpath):
+                    continue
                 text = _read_text_for_search(fpath)
                 if text is None:
                     continue
@@ -317,6 +331,8 @@ async def create_file(
         return "Error: path is required when artifact_type is not set."
 
     full = _resolve_path(path, workspace)
+    if _is_dotenv(full):
+        return _DOTENV_ERROR
     if full.is_file() and not overwrite:
         return f"Error: file already exists: {path}. Use overwrite=true or edit_file to modify."
 
@@ -334,6 +350,8 @@ async def write_file(path: str, content: str, *, workspace: str) -> str:
     :param content: File contents to write.
     """
     full = _resolve_path(path, workspace)
+    if _is_dotenv(full):
+        return _DOTENV_ERROR
 
     def _write():
         full.parent.mkdir(parents=True, exist_ok=True)
@@ -360,6 +378,8 @@ async def edit_file(
     :param end_line: Narrow search to lines ending here (0 = to end).
     """
     full = _resolve_path(path, workspace)
+    if _is_dotenv(full):
+        return _DOTENV_ERROR
     if not full.is_file():
         return f"Error: file not found: {path}"
 
@@ -422,6 +442,8 @@ async def multi_edit_file(
     :param edits: JSON array of edit objects, each with 'target' and 'replacement' strings, and optional 'start_line'/'end_line' integers.
     """
     full = _resolve_path(path, workspace)
+    if _is_dotenv(full):
+        return _DOTENV_ERROR
     if not full.is_file():
         return f"Error: file not found: {path}"
 
