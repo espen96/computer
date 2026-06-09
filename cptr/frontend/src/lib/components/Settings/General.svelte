@@ -4,9 +4,54 @@
 	import { theme, streamingBehavior } from '$lib/stores';
 	import type { Theme, StreamingBehavior } from '$lib/stores';
 	import { t, locale, changeLocale, supportedLocales } from '$lib/i18n';
+	import { notificationsEnabled, notificationSound } from '$lib/stores/chat';
+	import { fetchJSON } from '$lib/apis';
+	import { onMount } from 'svelte';
 
 	function setTheme(v: Theme) {
 		theme.set(v);
+	}
+
+	// ── Webhook URL ─────────────────────────────────────────────
+	let webhookUrl = $state('');
+	let webhookLoading = $state(false);
+
+	onMount(async () => {
+		try {
+			const data = await fetchJSON<{ config: Record<string, any> }>('/api/admin/config/notifications');
+			webhookUrl = data.config?.['notifications.webhook_url'] || '';
+		} catch {}
+	});
+
+	async function saveWebhookUrl() {
+		webhookLoading = true;
+		try {
+			await fetchJSON('/api/admin/config', {
+				method: 'PUT',
+				body: JSON.stringify({ config: { 'notifications.webhook_url': webhookUrl.trim() || null } })
+			});
+			toast.success('Webhook URL saved');
+		} catch {
+			toast.error('Failed to save webhook URL');
+		} finally {
+			webhookLoading = false;
+		}
+	}
+
+	async function toggleNotifications() {
+		if (!$notificationsEnabled) {
+			// Enabling: request permission
+			if ('Notification' in window) {
+				const permission = await Notification.requestPermission();
+				if (permission === 'granted') {
+					notificationsEnabled.set(true);
+				} else {
+					toast.error('Browser notification permission denied');
+				}
+			}
+		} else {
+			notificationsEnabled.set(false);
+		}
 	}
 </script>
 
@@ -39,6 +84,74 @@
 			<option value={loc.code}>{loc.label}</option>
 		{/each}
 	</select>
+
+	<!-- Notifications -->
+	<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">Notifications</h3>
+
+	<div class="flex flex-col gap-2.5">
+		<!-- Browser notifications toggle -->
+		<label class="flex items-center justify-between cursor-pointer">
+			<span class="text-xs text-gray-600 dark:text-gray-400">Browser notifications</span>
+			<button
+				class="relative w-8 h-[18px] rounded-full transition-colors duration-150
+				{$notificationsEnabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-700'}"
+				onclick={toggleNotifications}
+				role="switch"
+				aria-checked={$notificationsEnabled}
+			>
+				<span
+					class="absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-transform duration-150
+					{$notificationsEnabled ? 'translate-x-[14px]' : ''}"
+				></span>
+			</button>
+		</label>
+		<p class="text-[11px] text-gray-400 dark:text-gray-600 -mt-1">
+			Show OS-level notifications when a task completes and the tab is not focused.
+		</p>
+
+		<!-- Sound toggle -->
+		<label class="flex items-center justify-between cursor-pointer">
+			<span class="text-xs text-gray-600 dark:text-gray-400">Notification sound</span>
+			<button
+				class="relative w-8 h-[18px] rounded-full transition-colors duration-150
+				{$notificationSound ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-700'}"
+				onclick={() => notificationSound.update((v) => !v)}
+				role="switch"
+				aria-checked={$notificationSound}
+			>
+				<span
+					class="absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-transform duration-150
+					{$notificationSound ? 'translate-x-[14px]' : ''}"
+				></span>
+			</button>
+		</label>
+
+		<!-- Webhook URL -->
+		<div class="mt-1">
+			<label class="text-xs text-gray-600 dark:text-gray-400" for="webhook-url">
+				Webhook URL
+			</label>
+			<div class="flex gap-1.5 mt-1">
+				<input
+					id="webhook-url"
+					type="url"
+					bind:value={webhookUrl}
+					placeholder="https://hooks.slack.com/services/..."
+					class="flex-1 h-7 px-2 rounded-lg text-xs bg-gray-100 dark:bg-white/6 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/8 outline-none focus:border-blue-400 dark:focus:border-blue-500 transition-colors"
+				/>
+				<button
+					class="h-7 px-2.5 rounded-lg text-xs bg-gray-200/50 dark:bg-white/8 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
+					onclick={saveWebhookUrl}
+					disabled={webhookLoading}
+				>
+					Save
+				</button>
+			</div>
+			<p class="text-[11px] text-gray-400 dark:text-gray-600 mt-1">
+				Supports Slack, Discord, Teams, and generic JSON webhooks.
+			</p>
+		</div>
+	</div>
 
 	<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">Message queue</h3>
 	<div class="flex gap-1">

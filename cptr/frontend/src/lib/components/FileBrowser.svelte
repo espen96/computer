@@ -18,6 +18,7 @@
 	} from '$lib/apis/files';
 	import { fileIconName } from '$lib/utils/fileIcon';
 	import Icon from './Icon.svelte';
+	import Spinner from './common/Spinner.svelte';
 	import DropdownMenu from './DropdownMenu.svelte';
 	import { t } from '$lib/i18n';
 

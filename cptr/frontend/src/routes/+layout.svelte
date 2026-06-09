@@ -283,7 +283,7 @@
 {/if}
 
 <Toaster
-	position="bottom-center"
+	position="top-right"
 	toastOptions={{
 		style:
 			'font-size: 12px; font-family: var(--font-sans); background: #111; color: #e0e0e0; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px;'

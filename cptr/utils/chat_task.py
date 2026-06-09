@@ -571,6 +571,17 @@ async def run_chat_task(
         """Stream an output delta to the user."""
         await emit_to_user(user_id, {"chat_id": chat_id, "message_id": message_id, **data})
 
+    async def _emit_done():
+        """Emit done=True enriched with chat title and content preview."""
+        try:
+            chat_obj = await Chat.get_by_id(chat_id)
+            title = chat_obj.title if chat_obj else "Chat"
+        except Exception:
+            title = "Chat"
+        preview = content[:300] if content else ""
+        ws_name = workspace.rstrip("/").rsplit("/", 1)[-1] if workspace else ""
+        await emit(done=True, title=title, content=preview, workspace=ws_name)
+
     # Load existing state so continuations don't overwrite previous output
     msg = await ChatMessage.get_by_id(message_id)
     content = (msg.content or "") if msg else ""
@@ -769,7 +780,7 @@ async def run_chat_task(
                         done=True,
                     )
                     _task_state.pop(message_id, None)
-                    await emit(done=True)
+                    await _emit_done()
                     return
 
                 elif event["type"] == "done":
@@ -794,7 +805,7 @@ async def run_chat_task(
                     done=True,
                 )
                 _task_state.pop(message_id, None)
-                await emit(done=True)
+                await _emit_done()
                 return
 
         # Max iterations reached
@@ -806,13 +817,13 @@ async def run_chat_task(
             meta={"error": "max iterations reached"},
         )
         _task_state.pop(message_id, None)
-        await emit(done=True)
+        await _emit_done()
 
     except asyncio.CancelledError:
         _flush_text()
         await ChatMessage.update(message_id, content=content, output=output_items, done=True)
         _task_state.pop(message_id, None)
-        await emit(done=True)
+        await _emit_done()
     except Exception as e:
         logger.exception(f"Chat task error for message {message_id}")
         _flush_text()
@@ -824,7 +835,7 @@ async def run_chat_task(
             meta={"error": str(e)},
         )
         _task_state.pop(message_id, None)
-        await emit(done=True)
+        await _emit_done()
     finally:
         _tasks.pop(message_id, None)
         _task_state.pop(message_id, None)
@@ -857,6 +868,20 @@ async def run_chat_task(
         except Exception:
             logger.debug(
                 "[title] Error in title generation for chat %s", chat_id[:8], exc_info=True
+            )
+        # Fire webhook notification if configured
+        try:
+            webhook_url = await Config.get("notifications.webhook_url")
+            if webhook_url:
+                chat_obj = chat_obj or await Chat.get_by_id(chat_id)
+                title = chat_obj.title if chat_obj else "Chat"
+                preview = content[:300] if content else ""
+                from cptr.utils.webhook import post_webhook
+
+                await post_webhook(webhook_url, title, preview)
+        except Exception:
+            logger.debug(
+                "[webhook] Error sending webhook for chat %s", chat_id[:8], exc_info=True
             )
         # Process any queued follow-up messages
         try:
