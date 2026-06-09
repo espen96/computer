@@ -78,6 +78,14 @@
 	"quickOpen.searchFiles": "Search files...",
 	"quickOpen.noFiles": "No files found",
 
+	"search.placeholder": "Search...",
+	"search.search": "Search",
+	"search.chats": "Chats",
+	"search.files": "Files",
+	"search.noResults": "No results found",
+	"search.recentChats": "Recent chats",
+	"search.noRecentChats": "No recent chats",
+
 	"settings.back": "Back",
 	"settings.general": "General",
 	"settings.account": "Account",

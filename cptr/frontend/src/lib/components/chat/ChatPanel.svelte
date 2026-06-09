@@ -229,6 +229,10 @@
 			if (gen !== loadGeneration) return;
 			allMessages = data.messages;
 			currentMessageId = data.chat.current_message_id;
+			// Update tab label with the real title from the DB
+			if (tabId && data.chat.title) {
+				updateTab(tabId, id, data.chat.title);
+			}
 		} finally {
 			if (isInitialLoad && gen === loadGeneration) loading = false;
 		}

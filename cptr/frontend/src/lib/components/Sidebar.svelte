@@ -10,12 +10,14 @@
 		sidebarWidth,
 		appVersion,
 		showChangelog,
+		showSearch,
 		openChatTab,
 		setActiveTab
 	} from '$lib/stores';
 	import { get } from 'svelte/store';
 	import Sortable from 'sortablejs';
 	import Icon from './Icon.svelte';
+	import KeyPill from './KeyPill.svelte';
 	import DirectoryPicker from './DirectoryPicker.svelte';
 	import DropdownMenu from './DropdownMenu.svelte';
 	import SettingsModal from './SettingsModal.svelte';
@@ -28,6 +30,7 @@
 	import { chatEnabled } from '$lib/stores/chat';
 	import { socketStore } from '$lib/stores/socket.svelte';
 	import { t } from '$lib/i18n';
+	import { keybindings, formatChord } from '$lib/stores/keybindings';
 
 	import { onMount, onDestroy } from 'svelte';
 
@@ -47,6 +50,9 @@
 	let expandedWorkspaces = $state<Set<string>>(new Set());
 	let wsChatsCache = $state<Map<string, ChatInfo[]>>(new Map());
 	let wsChatsLoading = $state<Set<string>>(new Set());
+
+	// Keybinding shortcut display for search
+	let searchShortcut = $derived(formatChord($keybindings.quickOpen));
 
 	function toggleWorkspaceExpand(path: string) {
 		const next = new Set(expandedWorkspaces);
@@ -94,23 +100,15 @@
 	}
 
 	function handleSidebarChatClick(chatId: string, wsPath: string, title: string) {
-		// If not already on this workspace, navigate first
-		const currentWsPath = $page.url.searchParams.get('workspace');
-		if ($page.url.pathname !== '/' || currentWsPath !== wsPath) {
-			goto(`/?workspace=${encodeURIComponent(wsPath)}`);
-		}
-		openChatTab(chatId, undefined, title);
+		goto(`/?workspace=${encodeURIComponent(wsPath)}&chatId=${encodeURIComponent(chatId)}`);
 		if (typeof window !== 'undefined' && window.innerWidth < 768) {
 			sidebarOpen.set(false);
 		}
 	}
 
 	function handleShowMoreChats(wsPath: string) {
-		// Navigate to the workspace and focus an existing chat tab (landing/history)
-		// instead of always creating a new one
 		goto(`/?workspace=${encodeURIComponent(wsPath)}`);
 
-		// Check if there's already a chat tab showing the landing page (no specific chatId)
 		const ws = get(currentWorkspace);
 		if (ws) {
 			for (const group of ws.groups) {
@@ -131,26 +129,8 @@
 		}
 	}
 
-	async function handleNewChat(wsPath: string) {
-		// Navigate to the workspace if not already there
-		const currentWsPath = $page.url.searchParams.get('workspace');
-		if ($page.url.pathname !== '/' || currentWsPath !== wsPath) {
-			await goto(`/?workspace=${encodeURIComponent(wsPath)}`);
-		}
-		// Wait for loadWorkspace() to finish populating currentWorkspace
-		// (it runs async in a $effect after goto resolves)
-		const ws = get(currentWorkspace);
-		if (!ws || ws.path !== wsPath) {
-			await new Promise<void>((resolve) => {
-				const unsub = currentWorkspace.subscribe((w) => {
-					if (w && w.path === wsPath) {
-						unsub();
-						resolve();
-					}
-				});
-			});
-		}
-		openChatTab();
+	function handleNewChat(wsPath: string) {
+		goto(`/?workspace=${encodeURIComponent(wsPath)}&chatId`);
 		if (typeof window !== 'undefined' && window.innerWidth < 768) {
 			sidebarOpen.set(false);
 		}
@@ -333,9 +313,23 @@
 			</button>
 		</div>
 
+		<!-- Search -->
+		<div class="px-1.5 mt-1 shrink-0">
+			<button
+				class="group flex items-center gap-1.5 w-full h-7 px-2 rounded-lg text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors duration-100"
+				onclick={() => showSearch.set(true)}
+			>
+				<Icon name="search" size={14} />
+				<span class="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap"
+					>{$t('search.search')}</span
+				>
+				<KeyPill text={searchShortcut} class="ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-100" />
+			</button>
+		</div>
+
 		<!-- Automations (only when chat/LLM backend is available) -->
 		{#if $chatEnabled}
-		<div class="px-1.5 mt-1 shrink-0">
+		<div class="px-1.5 shrink-0">
 			<a
 				href="/automations"
 				class="flex items-center gap-1.5 w-full h-7 px-2 rounded-lg text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors duration-100 no-underline"
