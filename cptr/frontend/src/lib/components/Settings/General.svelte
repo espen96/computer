@@ -6,6 +6,7 @@
 	import { t, locale, changeLocale, supportedLocales } from '$lib/i18n';
 	import { notificationsEnabled, notificationSound } from '$lib/stores/chat';
 	import { fetchJSON } from '$lib/apis';
+	import ToggleSwitch from '../common/ToggleSwitch.svelte';
 	import { onMount } from 'svelte';
 
 	function setTheme(v: Theme) {
@@ -92,18 +93,7 @@
 		<!-- Browser notifications toggle -->
 		<label class="flex items-center justify-between cursor-pointer">
 			<span class="text-xs text-gray-600 dark:text-gray-400">Browser notifications</span>
-			<button
-				class="relative w-8 h-[18px] rounded-full transition-colors duration-150
-				{$notificationsEnabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-700'}"
-				onclick={toggleNotifications}
-				role="switch"
-				aria-checked={$notificationsEnabled}
-			>
-				<span
-					class="absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-transform duration-150
-					{$notificationsEnabled ? 'translate-x-[14px]' : ''}"
-				></span>
-			</button>
+			<ToggleSwitch value={$notificationsEnabled} onchange={() => toggleNotifications()} />
 		</label>
 		<p class="text-[11px] text-gray-400 dark:text-gray-600 -mt-1">
 			Show OS-level notifications when a task completes and the tab is not focused.
@@ -112,18 +102,7 @@
 		<!-- Sound toggle -->
 		<label class="flex items-center justify-between cursor-pointer">
 			<span class="text-xs text-gray-600 dark:text-gray-400">Notification sound</span>
-			<button
-				class="relative w-8 h-[18px] rounded-full transition-colors duration-150
-				{$notificationSound ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-700'}"
-				onclick={() => notificationSound.update((v) => !v)}
-				role="switch"
-				aria-checked={$notificationSound}
-			>
-				<span
-					class="absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-transform duration-150
-					{$notificationSound ? 'translate-x-[14px]' : ''}"
-				></span>
-			</button>
+			<ToggleSwitch value={$notificationSound} onchange={(v) => notificationSound.set(v)} />
 		</label>
 
 		<!-- Webhook URL -->

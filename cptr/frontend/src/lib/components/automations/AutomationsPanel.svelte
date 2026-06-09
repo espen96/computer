@@ -5,7 +5,7 @@
 	 */
 	import { goto } from '$app/navigation';
 	import Icon from '../Icon.svelte';
-	import ToggleSwitch from '../ToggleSwitch.svelte';
+	import ToggleSwitch from '../common/ToggleSwitch.svelte';
 	import Spinner from '../common/Spinner.svelte';
 	import AutomationModal from './AutomationModal.svelte';
 	import { openChatTab, sidebarOpen } from '$lib/stores';

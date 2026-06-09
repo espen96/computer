@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import { getAdminConfig, updateConfig as apiUpdateConfig } from '$lib/apis/admin';
 	import { t } from '$lib/i18n';
-	import ToggleSwitch from '$lib/components/ToggleSwitch.svelte';
+	import ToggleSwitch from '$lib/components/common/ToggleSwitch.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 
 	let config = $state<Record<string, any>>({});

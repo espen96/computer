@@ -3,7 +3,7 @@
 	import { toolApprovalMode, planMode, type ToolApprovalMode } from '$lib/stores';
 	import { tooltip } from '$lib/tooltip';
 	import Icon from '../Icon.svelte';
-	import ToggleSwitch from '../ToggleSwitch.svelte';
+	import ToggleSwitch from '../common/ToggleSwitch.svelte';
 
 	interface Props {
 		onfiles: (files: FileList) => void;
