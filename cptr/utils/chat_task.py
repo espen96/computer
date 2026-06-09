@@ -81,6 +81,11 @@ def get_live_state(message_id: str) -> dict | None:
     return _task_state.get(message_id)
 
 
+def get_active_chat_ids() -> set[str]:
+    """Return the set of chat_ids that currently have a running task."""
+    return {cid for mid, cid in _task_chat.items() if mid in _tasks and not _tasks[mid].done()}
+
+
 # ── Queue processing ────────────────────────────────────────
 
 
@@ -541,6 +546,32 @@ def _append_tool_to_messages(messages: list[dict], event: dict, result: str, pro
 # ── Connection resolution ───────────────────────────────────
 
 
+def build_artifact_item(tool_name: str, arguments: dict, result: str) -> dict | None:
+    """Build an artifact output item if the tool call produced an artifact.
+
+    Works for both create_artifact and create_file with artifact_type.
+    Returns None if no artifact card should be shown.
+    """
+    artifact_type = arguments.get("artifact_type", "")
+    if tool_name == "create_artifact":
+        artifact_type = artifact_type or "implementation_plan"
+    if not artifact_type:
+        return None
+
+    try:
+        meta = json.loads(result)
+    except (json.JSONDecodeError, TypeError):
+        meta = {}
+
+    return {
+        "type": "artifact",
+        "artifact_type": artifact_type,
+        "title": meta.get("title") or arguments.get("title") or artifact_type.replace("_", " ").title(),
+        "content": arguments.get("content", ""),
+        "path": meta.get("path") or arguments.get("path", ""),
+    }
+
+
 def _default_base_url(provider: str) -> str:
     return {
         "anthropic": "https://api.anthropic.com/v1",
@@ -565,6 +596,17 @@ async def run_chat_task(
     async def emit(**data):
         """Stream an output delta to the user."""
         await emit_to_user(user_id, {"chat_id": chat_id, "message_id": message_id, **data})
+
+    async def _emit_done():
+        """Emit done=True enriched with chat title and content preview."""
+        try:
+            chat_obj = await Chat.get_by_id(chat_id)
+            title = chat_obj.title if chat_obj else "Chat"
+        except Exception:
+            title = "Chat"
+        preview = content[:300] if content else ""
+        ws_name = workspace.rstrip("/").rsplit("/", 1)[-1] if workspace else ""
+        await emit(done=True, title=title, content=preview, workspace=ws_name)
 
     # Load existing state so continuations don't overwrite previous output
     msg = await ChatMessage.get_by_id(message_id)
@@ -698,23 +740,8 @@ async def run_chat_task(
                         _sync_state()
 
                         # Artifact UI card: detect create_artifact or create_file with artifact_type
-                        args = event["arguments"]
-                        artifact_type = args.get("artifact_type", "")
-                        if name == "create_artifact":
-                            artifact_type = artifact_type or "implementation_plan"
-                        if artifact_type:
-                            # Parse metadata from tool result or build from args
-                            try:
-                                meta = json.loads(result)
-                            except (json.JSONDecodeError, TypeError):
-                                meta = {}
-                            artifact_item = {
-                                "type": "artifact",
-                                "artifact_type": artifact_type,
-                                "title": meta.get("title") or args.get("title") or artifact_type.replace("_", " ").title(),
-                                "content": args.get("content", ""),
-                                "path": meta.get("path", ""),
-                            }
+                        artifact_item = build_artifact_item(name, event["arguments"], result)
+                        if artifact_item:
                             output_items.append(artifact_item)
                             await emit(output=artifact_item)
                             _sync_state()
@@ -764,7 +791,7 @@ async def run_chat_task(
                         done=True,
                     )
                     _task_state.pop(message_id, None)
-                    await emit(done=True)
+                    await _emit_done()
                     return
 
                 elif event["type"] == "done":
@@ -789,7 +816,7 @@ async def run_chat_task(
                     done=True,
                 )
                 _task_state.pop(message_id, None)
-                await emit(done=True)
+                await _emit_done()
                 return
 
         # Max iterations reached
@@ -801,13 +828,13 @@ async def run_chat_task(
             meta={"error": "max iterations reached"},
         )
         _task_state.pop(message_id, None)
-        await emit(done=True)
+        await _emit_done()
 
     except asyncio.CancelledError:
         _flush_text()
         await ChatMessage.update(message_id, content=content, output=output_items, done=True)
         _task_state.pop(message_id, None)
-        await emit(done=True)
+        await _emit_done()
     except Exception as e:
         logger.exception(f"Chat task error for message {message_id}")
         _flush_text()
@@ -819,7 +846,7 @@ async def run_chat_task(
             meta={"error": str(e)},
         )
         _task_state.pop(message_id, None)
-        await emit(done=True)
+        await _emit_done()
     finally:
         _tasks.pop(message_id, None)
         _task_state.pop(message_id, None)
@@ -852,6 +879,20 @@ async def run_chat_task(
         except Exception:
             logger.debug(
                 "[title] Error in title generation for chat %s", chat_id[:8], exc_info=True
+            )
+        # Fire webhook notification if configured
+        try:
+            webhook_url = await Config.get("notifications.webhook_url")
+            if webhook_url:
+                chat_obj = chat_obj or await Chat.get_by_id(chat_id)
+                title = chat_obj.title if chat_obj else "Chat"
+                preview = content[:300] if content else ""
+                from cptr.utils.webhook import post_webhook
+
+                await post_webhook(webhook_url, title, preview)
+        except Exception:
+            logger.debug(
+                "[webhook] Error sending webhook for chat %s", chat_id[:8], exc_info=True
             )
         # Process any queued follow-up messages
         try:

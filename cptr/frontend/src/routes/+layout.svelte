@@ -3,7 +3,9 @@
 	import '@xterm/xterm/css/xterm.css';
 
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import Bar from '$lib/components/Bar.svelte';
+	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import ShortcutBar from '$lib/components/ShortcutBar.svelte';
 	import GitBar from '$lib/components/GitBar.svelte';
@@ -233,9 +235,7 @@
 {#if authState === 'checking'}
 	<!-- Loading spinner while checking auth -->
 	<div class="flex items-center justify-center h-dvh bg-white dark:bg-black">
-		<div
-			class="w-5 h-5 border-2 border-gray-300 border-t-gray-600 dark:border-gray-700 dark:border-t-gray-400 rounded-full animate-spin"
-		></div>
+		<Spinner size={20} />
 	</div>
 {:else if authState === 'needs_setup' || authState === 'needs_login'}
 	<!-- Auth screen -->
@@ -253,7 +253,7 @@
 		<Sidebar />
 
 		<div id="main-col" class="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
-			{#if !$currentWorkspace}
+			{#if !$currentWorkspace && $page.url.pathname === '/'}
 				<Bar />
 			{/if}
 			<main class="relative flex-1 min-h-0 overflow-hidden">
@@ -279,16 +279,15 @@
 	<ChangelogModal />
 {:else}
 	<div class="flex items-center justify-center h-dvh bg-white dark:bg-black">
-		<div
-			class="w-5 h-5 border-2 border-gray-300 border-t-gray-600 dark:border-gray-700 dark:border-t-gray-400 rounded-full animate-spin"
-		></div>
+		<Spinner size={20} />
 	</div>
 {/if}
 
 <Toaster
-	position="bottom-center"
+	position="top-right"
+	theme="system"
 	toastOptions={{
 		style:
-			'font-size: 12px; font-family: var(--font-sans); background: #111; color: #e0e0e0; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px;'
+			'font-size: 12px; font-family: var(--font-sans); background: transparent; border: none; box-shadow: none; border-radius: 8px; padding: 0;'
 	}}
 />

@@ -33,6 +33,7 @@
 	import GroupTabBar from '$lib/components/GroupTabBar.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import SystemInfo from '$lib/components/SystemInfo.svelte';
+	import Spinner from '$lib/components/common/Spinner.svelte';
 
 	let showPicker = $state(false);
 
@@ -47,7 +48,7 @@
 		if (wsPath && wsPath !== lastLoadedPath) {
 			lastLoadedPath = wsPath;
 			loadWorkspace(wsPath);
-		} else if (!wsPath && lastLoadedPath !== null) {
+		} else if (!wsPath) {
 			lastLoadedPath = null;
 			currentWorkspace.set(null);
 		}
@@ -433,14 +434,13 @@
 							</div>
 						{/each}
 
+
 						<!-- Fallback content for non-persisted states -->
 						{#if !groupTab || groupTab.type === 'files'}
 							<FileBrowser />
 						{:else if groupTab.type === 'terminal' && !groupTab.sessionId}
 							<div class="flex items-center justify-center h-full">
-								<div
-									class="w-5 h-5 border-2 border-gray-800 border-t-gray-400 rounded-full animate-spin"
-								></div>
+								<Spinner size={20} />
 							</div>
 						{/if}
 					{/if}

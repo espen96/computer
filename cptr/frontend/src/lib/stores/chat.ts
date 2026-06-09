@@ -2,8 +2,10 @@
  * Chat state: tracks whether chat is available (at least one connection configured).
  */
 import { writable, get } from 'svelte/store';
+import { toast } from 'svelte-sonner';
 import { fetchJSON } from '$lib/apis';
 import { socketStore } from '$lib/stores/socket.svelte';
+import { activeTab, openChatTab } from '$lib/stores';
 
 export const chatEnabled = writable<boolean>(false);
 
@@ -27,9 +29,26 @@ export function unregisterStreamingChat(chatId: string) {
 /**
  * Bind a global socket listener that clears streamingChatTabs when a
  * chat's "done" event arrives -- even if the ChatPanel is not mounted.
+ * Also fires browser notifications and in-app toasts.
  * Called once from the app layout.
  */
 let globalListenerBound = false;
+
+/** Whether browser notifications are enabled (persisted to localStorage). */
+export const notificationsEnabled = writable<boolean>(
+	typeof localStorage !== 'undefined' ? localStorage.getItem('notificationsEnabled') === 'true' : false
+);
+notificationsEnabled.subscribe((v) => {
+	if (typeof localStorage !== 'undefined') localStorage.setItem('notificationsEnabled', String(v));
+});
+
+/** Whether notification sound is enabled (persisted to localStorage). */
+export const notificationSound = writable<boolean>(
+	typeof localStorage !== 'undefined' ? localStorage.getItem('notificationSound') !== 'false' : true
+);
+notificationSound.subscribe((v) => {
+	if (typeof localStorage !== 'undefined') localStorage.setItem('notificationSound', String(v));
+});
 
 export function bindGlobalChatListener() {
 	if (globalListenerBound) return;
@@ -41,17 +60,80 @@ export function bindGlobalChatListener() {
 			return;
 		}
 
-		socket.on('events:chat', (data: { chat_id: string; done?: boolean }) => {
-			if (!data.done) return;
-			const tabId = chatToTab.get(data.chat_id);
-			if (tabId) {
-				streamingChatTabs.update((s) => {
-					const next = new Set(s);
-					next.delete(tabId);
-					return next;
+		socket.on(
+			'events:chat',
+			(data: {
+				chat_id: string;
+				done?: boolean;
+				title?: string;
+				content?: string;
+				workspace?: string;
+			}) => {
+				if (!data.done) return;
+
+				// Clear streaming indicator for the tab
+				const tabId = chatToTab.get(data.chat_id);
+				if (tabId) {
+					streamingChatTabs.update((s) => {
+						const next = new Set(s);
+						next.delete(tabId);
+						return next;
+					});
+				}
+
+				// ── Notifications ──────────────────────────────────
+				// Skip if user is actively viewing this chat
+				const currentTab = get(activeTab);
+				const isViewingThisChat =
+					!document.hidden &&
+					currentTab?.type === 'chat' &&
+					currentTab?.path === data.chat_id;
+
+				if (isViewingThisChat) return;
+
+				const wsLabel = data.workspace ? `[${data.workspace}] ` : '';
+				const title = `${wsLabel}${data.title || 'Chat'}`;
+				const body = data.content || '';
+
+				// In-app toast
+				import('$lib/components/NotificationToast.svelte').then((mod) => {
+					const chatId = data.chat_id;
+					const toastId = toast.custom(mod.default, {
+						componentProps: {
+							title,
+							content: body,
+							onClick: async () => {
+								// Navigate to workspace page first if not already there
+								const wsPath = data.workspace;
+								if (wsPath && window.location.pathname !== '/') {
+									const { goto } = await import('$app/navigation');
+									await goto(`/?workspace=${encodeURIComponent(wsPath)}`);
+									setTimeout(() => openChatTab(chatId), 300);
+								} else {
+									openChatTab(chatId);
+								}
+								toast.dismiss(toastId);
+							},
+							onclose: () => {
+								toast.dismiss(toastId);
+							}
+						},
+						duration: 10000,
+						unstyled: true
+					});
 				});
+
+				// Browser notification (only when tab is hidden)
+				if (document.hidden && get(notificationsEnabled)) {
+					try {
+						new Notification(`${title} • cptr`, {
+							body: body.slice(0, 200),
+							icon: '/favicon.png'
+						});
+					} catch {}
+				}
 			}
-		});
+		);
 
 		globalListenerBound = true;
 	};

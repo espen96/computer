@@ -12,13 +12,14 @@
 	import FileSuggestionPopup from './FileSuggestionPopup.svelte';
 	import { searchFiles } from '$lib/apis/files';
 	import { uploadFile } from '$lib/apis/files';
-	import ModelSelector from './ModelSelector.svelte';
+	import ModelSelector from '../common/ModelSelector.svelte';
 	import SendButton from './SendButton.svelte';
 	import PlusMenu from './PlusMenu.svelte';
 	import DictateButton from './DictateButton.svelte';
 	import QueuedMessageItem from './QueuedMessageItem.svelte';
 	import Icon from '../Icon.svelte';
 	import { planMode } from '$lib/stores';
+	import Spinner from '$lib/components/common/Spinner.svelte';
 
 	interface Props {
 		inputText: string;
@@ -397,7 +398,7 @@
 					<div class="relative group flex-shrink-0">
 						{#if upload.loading}
 							<div class="flex items-center justify-center size-8 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10 shadow-sm">
-								<div class="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+								<Spinner size={16} />
 							</div>
 						{:else if upload.type === 'image'}
 							<img src={upload.url} alt={upload.name} class="size-8 object-cover rounded-xl border border-gray-200 dark:border-white/10 shadow-sm" />
@@ -451,6 +452,9 @@
 				<PlusMenu
 					onfiles={(files) => {
 						if (files) processFiles(Array.from(files));
+					}}
+					oncapture={(file) => {
+						processFiles([file]);
 					}}
 				/>
 				{#if $planMode}
