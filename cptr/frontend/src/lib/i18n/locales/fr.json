@@ -260,5 +260,10 @@
 	"admin.webBraveHint": "Obtenez votre clé API sur brave.com/search/api",
 	"admin.webDuckDuckGoNote": "DuckDuckGo ne nécessite aucune clé API (solution de repli).",
 	"admin.webPerplexityKey": "Clé API Perplexity",
-	"admin.webPerplexityHint": "Obtenez votre clé API sur perplexity.ai"
+	"admin.webPerplexityHint": "Obtenez votre clé API sur perplexity.ai",
+	"admin.webChatCompletions": "Chat Completions",
+	"admin.webCcBaseUrl": "URL de base",
+	"admin.webCcKey": "Clé API",
+	"admin.webCcModel": "Modèle",
+	"admin.webCcHint": "Tout endpoint compatible OpenAI (ex. Perplexity Sonar, proxy LiteLLM)"
 }

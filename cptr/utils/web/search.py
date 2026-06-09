@@ -41,7 +41,7 @@ async def _get_config(key: str) -> str:
 
 async def web_search_handler(query: str) -> str:
     """Search the web using the configured or best available provider."""
-    from cptr.utils.web import exa, perplexity, tavily, brave, duckduckgo
+    from cptr.utils.web import exa, perplexity, tavily, brave, duckduckgo, chat_completions
 
     # Check if web access is disabled by admin
     enabled = await _get_config("web.enabled")
@@ -54,6 +54,13 @@ async def web_search_handler(query: str) -> str:
     perplexity_key = await _get_key("PERPLEXITY_API_KEY", "web.perplexity_api_key")
     tavily_key = await _get_key("TAVILY_API_KEY", "web.tavily_api_key")
     brave_key = await _get_key("BRAVE_API_KEY", "web.brave_api_key")
+    cc_key = await _get_key("CHAT_COMPLETIONS_SEARCH_API_KEY", "web.chat_completions_api_key")
+    cc_url = (
+        await _get_config("web.chat_completions_base_url")
+    ) or os.environ.get("CHAT_COMPLETIONS_SEARCH_BASE_URL", "")
+    cc_model = (
+        await _get_config("web.chat_completions_model")
+    ) or os.environ.get("CHAT_COMPLETIONS_SEARCH_MODEL", "")
 
     # Explicit provider mode
     if provider != "auto":
@@ -76,6 +83,10 @@ async def web_search_handler(query: str) -> str:
                 return await brave.search(query, brave_key)
             elif provider == "duckduckgo":
                 return await duckduckgo.search(query)
+            elif provider == "chat_completions":
+                if not cc_key or not cc_url or not cc_model:
+                    return "Error: Chat Completions search requires API key, base URL, and model."
+                return await chat_completions.search(query, cc_key, cc_url, cc_model)
             else:
                 return f"Error: unknown search provider '{provider}'."
         except Exception as e:
