@@ -146,6 +146,10 @@
 
 		if (!data.done && !data.title && !isNew) return;
 
+		// Invalidate cache for ALL workspaces so re-expanding shows fresh data
+		wsChatsCache = new Map();
+
+		// Re-fetch immediately for any currently expanded workspaces
 		for (const path of expandedWorkspaces) {
 			fetchWorkspaceChats(path);
 		}

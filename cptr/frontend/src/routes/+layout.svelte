@@ -289,8 +289,10 @@
 <Toaster
 	position="top-right"
 	theme="system"
+	closeButton
+	richColors
 	toastOptions={{
 		style:
-			'font-size: 12px; font-family: var(--font-sans); background: transparent; border: none; box-shadow: none; border-radius: 8px; padding: 0;'
+			'font-size: 12px; font-family: var(--font-sans); border-radius: 8px;'
 	}}
 />
