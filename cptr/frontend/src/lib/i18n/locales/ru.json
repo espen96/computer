@@ -1,6 +1,5 @@
 {
 	"app.tagline": "Ваш компьютер, откуда угодно.",
-
 	"auth.createAccountHint": "Создайте аккаунт, чтобы начать.",
 	"auth.signInSystemHint": "Войдите с помощью системной учётной записи.",
 	"auth.setup": "Настройка",
@@ -20,7 +19,6 @@
 	"auth.minChars": "Минимум 6 символов",
 	"auth.connectionFailed": "Ошибка подключения",
 	"auth.accountPending": "Аккаунт создан. Ожидайте одобрения администратора.",
-
 	"sidebar.workspaces": "Рабочие области",
 	"sidebar.addWorkspace": "Добавить рабочую область",
 	"sidebar.collapse": "Свернуть",
@@ -31,14 +29,12 @@
 	"sidebar.remove": "Удалить",
 	"sidebar.workspaceOptions": "Параметры рабочей области",
 	"sidebar.closeSidebar": "Закрыть боковую панель",
-
 	"bar.newFile": "Новый файл",
 	"bar.newTerminal": "Новый терминал",
 	"bar.closeTab": "Закрыть вкладку",
 	"bar.new": "Создать...",
 	"bar.sidebar": "Боковая панель",
 	"bar.toggleSidebar": "Переключить боковую панель",
-
 	"files.filter": "Фильтр...",
 	"files.refresh": "Обновить",
 	"files.sort": "Сортировка",
@@ -73,10 +69,8 @@
 	"files.showHidden": "Показать dotfiles",
 	"files.hideHidden": "Скрыть dotfiles",
 	"files.failedToLoad": "Не удалось загрузить каталог",
-
 	"quickOpen.searchFiles": "Поиск файлов...",
 	"quickOpen.noFiles": "Файлы не найдены",
-
 	"settings.back": "Назад",
 	"settings.general": "Основные",
 	"settings.account": "Аккаунт",
@@ -84,18 +78,15 @@
 	"settings.save": "Сохранить",
 	"settings.saved": "Сохранено",
 	"settings.saving": "Сохранение…",
-
 	"general.title": "Основные",
 	"general.theme": "Тема",
 	"general.light": "Светлая",
 	"general.dark": "Тёмная",
 	"general.system": "Системная",
 	"general.language": "Язык",
-
 	"general.tools": "Инструменты",
 	"general.autoApproveTools": "Автоматически одобрять все вызовы инструментов",
 	"general.autoApproveToolsDesc": "Автоматически разрешать вызовы инструментов (запись, запуск и т. д.) без подтверждения",
-
 	"account.title": "Аккаунт",
 	"account.displayName": "Отображаемое имя",
 	"account.displayNamePlaceholder": "Введите отображаемое имя",
@@ -113,11 +104,9 @@
 	"account.uploadFailed": "Ошибка загрузки",
 	"account.failedToUpdate": "Ошибка обновления",
 	"account.failedToRemoveAvatar": "Не удалось удалить аватар",
-
 	"about.title": "О программе",
 	"about.license": "Лицензия",
 	"about.createdBy": "Создано Tim Baek, сделано на Земле",
-
 	"git.changes": "Изменения",
 	"git.history": "История",
 	"git.fetch": "Получить",
@@ -160,7 +149,6 @@
 	"git.discard": "Отменить",
 	"git.copyFilePath": "Копировать путь к файлу",
 	"git.copyRelativePath": "Копировать относительный путь",
-
 	"admin.users": "Пользователи",
 	"admin.settings": "Настройки",
 	"admin.noUsers": "Нет пользователей",
@@ -191,9 +179,7 @@
 	"admin.delete": "Удалить",
 	"admin.usernameRequired": "Введите имя пользователя",
 	"admin.minCharsPassword": "Минимум 6 символов",
-
 	"admin.connections": "Подключения",
-
 	"connections.loadError": "Не удалось загрузить подключения",
 	"connections.fieldsRequired": "Требуются базовый URL и API-ключ",
 	"connections.added": "Подключение добавлено",
@@ -211,15 +197,12 @@
 	"connections.cancel": "Отмена",
 	"connections.add": "Добавить",
 	"connections.verify": "Проверить",
-
 	"bar.newChat": "Новый чат",
-
 	"home.start": "Начало",
 	"home.openFolder": "Открыть папку...",
 	"home.recent": "Недавние",
 	"home.folders": "Папки",
 	"home.chatComingSoon": "Чат (скоро)",
-
 	"directory.cancel": "Отмена",
 	"directory.open": "Открыть \"{{name}}\"",
 	"directory.hidden": "Скрытые",
@@ -227,24 +210,20 @@
 	"directory.goBack": "Назад",
 	"directory.typePath": "Type a path... (Tab to complete)",
 	"directory.retry": "Повторить",
-
 	"saveDialog.fileNamePlaceholder": "Имя файла…",
 	"saveDialog.emptyFolder": "Пустая папка",
 	"saveDialog.cancel": "Отмена",
 	"saveDialog.save": "Сохранить",
 	"saveDialog.hidden": "Скрытые",
 	"saveDialog.retry": "Повторить",
-
 	"port.preview": "Предпросмотр",
 	"port.via": "через {{name}}",
-
 	"system.title": "Система",
 	"system.cpu": "ЦП",
 	"system.memory": "Память",
 	"system.disk": "Диск",
 	"system.cores": "{{count}} ядер",
 	"system.process": "ПРОЦЕСС",
-
 	"admin.web": "Веб",
 	"admin.webEnabled": "Включить доступ к вебу",
 	"admin.webEnabledHint": "ИИ может искать в вебе и получать URL-адреса.",
@@ -265,5 +244,16 @@
 	"admin.webCcBaseUrl": "Базовый URL",
 	"admin.webCcKey": "API-ключ",
 	"admin.webCcModel": "Модель",
-	"admin.webCcHint": "Любой OpenAI-совместимый эндпоинт (напр. Perplexity Sonar, прокси LiteLLM)"
+	"admin.webCcHint": "Любой OpenAI-совместимый эндпоинт (напр. Perplexity Sonar, прокси LiteLLM)",
+	"admin.models": "Models",
+	"models.defaults": "Defaults",
+	"models.noModels": "No models available",
+	"models.failedToLoad": "Failed to load model config",
+	"models.failedToToggle": "Failed to toggle model",
+	"models.failedToSave": "Failed to save",
+	"models.systemPrompt": "System Prompt",
+	"models.systemPromptHint": "Default instructions sent to the model. Use {{VARIABLES}} for dynamic content.",
+	"models.systemPromptInherited": "Inherits global default",
+	"models.templateVariables": "Variables",
+	"models.resetToDefault": "Reset"
 }

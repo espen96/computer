@@ -265,5 +265,17 @@
 	"admin.webCcBaseUrl": "URL base",
 	"admin.webCcKey": "Clave de API",
 	"admin.webCcModel": "Modelo",
-	"admin.webCcHint": "Cualquier endpoint compatible con OpenAI (ej. Perplexity Sonar, proxy LiteLLM)"
+	"admin.webCcHint": "Cualquier endpoint compatible con OpenAI (ej. Perplexity Sonar, proxy LiteLLM)",
+
+	"admin.models": "Modelos",
+	"models.defaults": "Predeterminados",
+	"models.noModels": "Sin modelos disponibles",
+	"models.failedToLoad": "Error al cargar configuración de modelos",
+	"models.failedToToggle": "Error al alternar modelo",
+	"models.failedToSave": "Error al guardar",
+	"models.systemPrompt": "Prompt del sistema",
+	"models.systemPromptHint": "Instrucciones predeterminadas enviadas al modelo. Usa {{VARIABLES}} para contenido dinámico.",
+	"models.systemPromptInherited": "Hereda el predeterminado global",
+	"models.templateVariables": "Variables",
+	"models.resetToDefault": "Restablecer"
 }
