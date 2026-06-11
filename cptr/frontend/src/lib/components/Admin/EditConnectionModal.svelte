@@ -46,7 +46,7 @@
 						.split(',')
 						.map((m) => m.trim())
 						.filter(Boolean)
-				: [];
+				: null;
 			const name =
 				formName.trim() ||
 				(() => {
