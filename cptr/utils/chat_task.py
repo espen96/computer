@@ -730,7 +730,17 @@ async def run_chat_task(
         new_messages_since: int = 0  # messages appended since last API call
 
         # Request params: arbitrary key-value pairs merged into the API request body
-        request_params = chat_params.get("request_params") or None
+        # Merge order: global ("*") → per-model → chat overrides (chat wins)
+        chat_request_params = chat_params.get("request_params") or {}
+        global_rp = {}
+        model_rp = {}
+        try:
+            chat_models_config = await Config.get("chat.models") or {}
+            global_rp = chat_models_config.get("*", {}).get("params", {}).get("request_params", {})
+            model_rp = chat_models_config.get(model, {}).get("params", {}).get("request_params", {})
+        except Exception:
+            pass
+        request_params = {**global_rp, **model_rp, **chat_request_params} or None
 
         for _iteration in range(CHAT_MAX_ITERATIONS):
             # ── Context compaction: summarize older messages if too large ──

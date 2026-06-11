@@ -3,6 +3,7 @@
 	import Modal from './Modal.svelte';
 	import Users from './Admin/Users.svelte';
 	import Connections from './Admin/Connections.svelte';
+	import Models from './Admin/Models.svelte';
 	import AdminSettings from './Admin/Settings.svelte';
 	import { t } from '$lib/i18n';
 
@@ -12,7 +13,7 @@
 
 	let { onclose }: Props = $props();
 
-	let activeTab = $state<'users' | 'connections' | 'settings'>('users');
+	let activeTab = $state<'users' | 'connections' | 'models' | 'settings'>('users');
 </script>
 
 <Modal
@@ -30,7 +31,7 @@
 				<Icon name="chevron-left" size={12} />
 				<span>{$t('settings.back')}</span>
 			</button>
-			{#each [{ id: 'users', label: $t('admin.users'), icon: 'user' }, { id: 'connections', label: $t('admin.connections'), icon: 'plug' }, { id: 'settings', label: $t('admin.settings'), icon: 'settings' }] as tab}
+			{#each [{ id: 'users', label: $t('admin.users'), icon: 'user' }, { id: 'connections', label: $t('admin.connections'), icon: 'plug' }, { id: 'models', label: $t('admin.models'), icon: 'cube' }, { id: 'settings', label: $t('admin.settings'), icon: 'settings' }] as tab}
 				<button
 					class="flex items-center gap-1.5 h-7 px-2 md:w-full shrink-0 rounded-lg text-xs text-left transition-colors duration-75
 						{activeTab === tab.id
@@ -50,6 +51,8 @@
 			<Users />
 		{:else if activeTab === 'connections'}
 			<Connections />
+		{:else if activeTab === 'models'}
+			<Models />
 		{:else if activeTab === 'settings'}
 			<AdminSettings />
 		{/if}

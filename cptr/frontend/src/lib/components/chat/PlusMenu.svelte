@@ -397,7 +397,7 @@
 				{:else}
 					<div class="px-0.5 py-0.5 flex flex-col max-h-48 overflow-y-auto">
 						{#each paramRows as row, i}
-							<div class="group flex items-center gap-1 px-1.5 h-7">
+							<div class="group/row flex items-center gap-1 px-1.5 h-6">
 								<input
 									type="text"
 									placeholder="key"
@@ -405,7 +405,7 @@
 									onblur={syncParams}
 									autocomplete="off"
 									spellcheck="false"
-									class="w-[72px] shrink-0 bg-transparent text-[11px] font-mono text-gray-700 dark:text-gray-300 placeholder:text-gray-300 dark:placeholder:text-gray-600 outline-none"
+									class="w-[72px] shrink-0 bg-transparent text-[11px] font-mono text-gray-600 dark:text-gray-400 placeholder:text-gray-300 dark:placeholder:text-gray-600 outline-none"
 								/>
 								<input
 									type="text"
@@ -414,17 +414,15 @@
 									onblur={syncParams}
 									autocomplete="off"
 									spellcheck="false"
-									class="flex-1 min-w-0 bg-transparent text-[11px] font-mono text-gray-700 dark:text-gray-300 placeholder:text-gray-300 dark:placeholder:text-gray-600 outline-none"
+									class="flex-1 min-w-0 bg-transparent text-[11px] font-mono text-gray-600 dark:text-gray-400 placeholder:text-gray-300 dark:placeholder:text-gray-600 outline-none"
 								/>
 								<button
 									type="button"
 									onclick={() => removeParamRow(i)}
-									class="shrink-0 p-0.5 text-gray-300 dark:text-gray-700 opacity-0 group-hover:opacity-100 hover:text-gray-500 dark:hover:text-gray-400 transition-all"
+									class="shrink-0 text-gray-300 dark:text-gray-700 opacity-0 group-hover/row:opacity-100 hover:text-gray-500 dark:hover:text-gray-400 transition-colors duration-75"
 									aria-label="Remove parameter"
 								>
-									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-3">
-										<path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"/>
-									</svg>
+									<Icon name="xmark" size={8} />
 								</button>
 							</div>
 						{/each}
@@ -436,10 +434,7 @@
 					onclick={addParamRow}
 					disabled={!canAddParam}
 				>
-					<svg class="size-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<line x1="12" y1="5" x2="12" y2="19" />
-						<line x1="5" y1="12" x2="19" y2="12" />
-					</svg>
+					<Icon name="plus" size={12} />
 					<span class="flex-1 text-left">Add parameter</span>
 				</button>
 			</div>
