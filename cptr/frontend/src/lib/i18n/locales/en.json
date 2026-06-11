@@ -217,8 +217,11 @@
 	"connections.baseUrl": "Base URL",
 	"connections.prefixId": "Prefix ID",
 	"connections.models": "Models (comma-separated, optional)",
+	"connections.modelsHint": "Leave blank to auto-discover from provider.",
 	"connections.cancel": "Cancel",
 	"connections.add": "Add",
+	"connections.edit": "Edit Connection",
+	"connections.updated": "Connection updated",
 	"connections.verify": "Verify",
 
 	"bar.newChat": "New Chat",
