@@ -238,7 +238,7 @@
 		}}
 	>
 		{#if phase === 'recording'}
-			<div class="flex items-center gap-2.5">
+			<div class="flex items-center gap-2.5 mt-0.5">
 				<div class="flex items-end gap-px h-4 flex-1">
 					{#each waveformBars as h}
 						<div
