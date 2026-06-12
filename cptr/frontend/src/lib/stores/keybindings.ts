@@ -75,7 +75,7 @@ export const DEFAULT_KEYBINDINGS: Record<ActionId, string> = {
 	openSettings: 'Cmd+.',
 	toggleSplit: 'Cmd+\\',
 	toggleSidebar: 'Cmd+Shift+S',
-	voiceNote: 'Alt+R'
+	voiceNote: 'Cmd+Shift+M'
 };
 
 // ── Store ───────────────────────────────────────────────────────

@@ -4,7 +4,6 @@
 	import { toast } from 'svelte-sonner';
 	import Modal from './Modal.svelte';
 	import Spinner from './common/Spinner.svelte';
-	import Icon from './Icon.svelte';
 	import { writeFile } from '$lib/apis/files';
 	import { fetchJSON } from '$lib/apis';
 	import { transcribeEnabled } from '$lib/stores/audio';
@@ -24,7 +23,7 @@
 	let fileName = $state('');
 	let audioBlob = $state<Blob | null>(null);
 
-	let waveformBars = $state<number[]>(new Array(24).fill(2));
+	let waveformBars = $state<number[]>(new Array(40).fill(2));
 
 	let mediaRecorder: MediaRecorder | null = null;
 	let audioContext: AudioContext | null = null;
@@ -32,6 +31,7 @@
 	let animFrame = 0;
 	let timerInterval = 0;
 	let chunks: Blob[] = [];
+	let cancelled = false;
 	let filenameInput: HTMLInputElement | undefined = $state();
 
 	// ── IndexedDB ───────────────────────────────────────────────
@@ -52,7 +52,10 @@
 		const db = await openIDB();
 		const tx = db.transaction(IDB_STORE, 'readwrite');
 		tx.objectStore(IDB_STORE).put({ id, blob, directory, createdAt: Date.now() });
-		return new Promise<void>((r, j) => { tx.oncomplete = () => r(); tx.onerror = () => j(tx.error); });
+		return new Promise<void>((r, j) => {
+			tx.oncomplete = () => r();
+			tx.onerror = () => j(tx.error);
+		});
 	}
 
 	async function clearFromIDB(id: string) {
@@ -96,8 +99,8 @@
 			const tick = () => {
 				if (!analyser) return;
 				analyser.getByteFrequencyData(buf);
-				waveformBars = Array.from({ length: 24 }, (_, i) =>
-					Math.max(2, (buf[Math.floor((i / 24) * buf.length)] / 255) * 24)
+				waveformBars = Array.from({ length: 40 }, (_, i) =>
+					Math.max(2, (buf[Math.floor((i / 40) * buf.length)] / 255) * 20)
 				);
 				animFrame = requestAnimationFrame(tick);
 			};
@@ -105,12 +108,15 @@
 
 			chunks = [];
 			mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType() });
-			mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+			mediaRecorder.ondataavailable = (e) => {
+				if (e.data.size > 0) chunks.push(e.data);
+			};
 			mediaRecorder.onstop = () => {
-				audioBlob = new Blob(chunks, { type: mediaRecorder?.mimeType || 'audio/webm' });
 				stream.getTracks().forEach((t) => t.stop());
 				cancelAnimationFrame(animFrame);
 				audioContext?.close();
+				if (cancelled) return;
+				audioBlob = new Blob(chunks, { type: mediaRecorder?.mimeType || 'audio/webm' });
 				handleComplete();
 			};
 			mediaRecorder.start(250);
@@ -127,7 +133,11 @@
 		if (mediaRecorder?.state !== 'inactive') mediaRecorder?.stop();
 	}
 
-	function cancel() { stop(); onclose(); }
+	function cancel() {
+		cancelled = true;
+		stop();
+		onclose();
+	}
 
 	// ── Save-first flow ─────────────────────────────────────────
 
@@ -138,7 +148,9 @@
 		phase = 'processing';
 
 		// 1. IndexedDB safety
-		try { await saveToIDB(id, audioBlob); } catch {}
+		try {
+			await saveToIDB(id, audioBlob);
+		} catch {}
 
 		// 2. Upload audio
 		const audioName = `${id}.${ext(audioBlob)}`;
@@ -157,7 +169,10 @@
 			try {
 				const tf = new FormData();
 				tf.append('file', new File([audioBlob], audioName, { type: audioBlob.type }));
-				const res = await fetchJSON<{ text: string }>('/api/audio/transcribe', { method: 'POST', body: tf });
+				const res = await fetchJSON<{ text: string }>('/api/audio/transcribe', {
+					method: 'POST',
+					body: tf
+				});
 				transcript = res.text || '';
 			} catch (err: any) {
 				transcript = '';
@@ -179,7 +194,13 @@
 		const n = fileName.trim();
 		const audioFile = `${n}.${ext(audioBlob!)}`;
 		const mdPath = `${directory}/${n}.md`;
-		const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+		const date = new Date().toLocaleDateString('en-US', {
+			month: 'short',
+			day: 'numeric',
+			year: 'numeric',
+			hour: 'numeric',
+			minute: '2-digit'
+		});
 
 		let md = `# ${date}\n\n*${fmt(elapsed)}*\n\n`;
 		if (transcript) md += `${transcript}\n\n`;
@@ -206,36 +227,50 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<Modal onclose={phase === 'recording' ? cancel : onclose} class="w-full max-w-xs mx-4">
+<Modal onclose={phase === 'recording' ? cancel : onclose} class="w-full max-w-[260px] mx-4">
 	<div
-		class="p-4"
-		onkeydown={(e) => { if (phase === 'naming' && e.key === 'Enter') { e.preventDefault(); save(); } }}
+		class="px-4 py-3.5"
+		onkeydown={(e) => {
+			if (phase === 'naming' && e.key === 'Enter') {
+				e.preventDefault();
+				save();
+			}
+		}}
 	>
 		{#if phase === 'recording'}
-			<div class="flex items-end justify-center gap-[2px] h-6">
-				{#each waveformBars as h}
-					<div class="w-[3px] rounded-full bg-gray-400 dark:bg-gray-500 transition-all duration-75" style="height: {h}px"></div>
-				{/each}
-			</div>
-
-			<div class="flex items-center justify-between mt-3">
-				<span class="text-[13px] font-mono text-gray-600 dark:text-gray-400 tabular-nums">{fmt(elapsed)}</span>
-				<div class="flex items-center gap-3">
-					<button class="text-[11px] text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors" onclick={cancel}>Cancel</button>
-					<button class="text-[13px] text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors" onclick={stop}>Stop →</button>
+			<div class="flex items-center gap-2.5">
+				<div class="flex items-end gap-px h-4 flex-1">
+					{#each waveformBars as h}
+						<div
+							class="flex-1 rounded-full bg-gray-300 dark:bg-gray-700 transition-all duration-75"
+							style="height: {h}px"
+						></div>
+					{/each}
 				</div>
+				<span class="text-xs font-mono text-gray-400 dark:text-gray-600 tabular-nums shrink-0"
+					>{fmt(elapsed)}</span
+				>
 			</div>
 
+			<div class="flex items-center justify-end gap-3 mt-3">
+				<button
+					class="text-[13px] text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+					onclick={cancel}>Cancel</button
+				>
+				<button
+					class="text-[13px] text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-100"
+					onclick={stop}>Done →</button
+				>
+			</div>
 		{:else if phase === 'processing'}
 			<div class="flex items-center gap-2">
 				<Spinner size={12} />
-				<span class="text-[13px] text-gray-500 dark:text-gray-400">Processing…</span>
+				<span class="text-xs text-gray-400 dark:text-gray-600">Processing…</span>
 			</div>
-
 		{:else if phase === 'naming'}
 			{#if transcript}
-				<p class="text-[13px] text-gray-500 dark:text-gray-400 line-clamp-2 mb-2">
-					{transcript.slice(0, 160)}{transcript.length > 160 ? '…' : ''}
+				<p class="text-xs text-gray-400 dark:text-gray-600 line-clamp-2 mb-2">
+					{transcript.slice(0, 140)}{transcript.length > 140 ? '…' : ''}
 				</p>
 			{/if}
 
@@ -249,18 +284,20 @@
 				spellcheck="false"
 				class="block w-full bg-transparent text-[13px] text-gray-700 dark:text-gray-300 placeholder:text-gray-300 dark:placeholder:text-gray-700 outline-none py-0.5"
 			/>
-			<p class="text-[10px] text-gray-300 dark:text-gray-700 mt-0.5">{directory.split('/').pop()}</p>
+			<p class="text-[10px] text-gray-300 dark:text-gray-700 mt-0.5">
+				{directory.split('/').pop()}
+			</p>
 
-			<div class="flex items-center justify-end mt-3">
+			<div class="flex justify-end mt-3">
 				<button
 					onclick={save}
 					disabled={!fileName.trim()}
 					class="text-[13px] text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-100 disabled:opacity-30 disabled:pointer-events-none"
-				>Save →</button>
+					>Save →</button
+				>
 			</div>
-
 		{:else if phase === 'done'}
-			<p class="text-[13px] text-gray-500 dark:text-gray-400">Saved ✓</p>
+			<p class="text-xs text-gray-400 dark:text-gray-600">Saved ✓</p>
 		{/if}
 	</div>
 </Modal>
