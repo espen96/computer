@@ -100,17 +100,6 @@
 			Show OS-level notifications when a task completes and the tab is not focused.
 		</p>
 
-		<!-- Update notifications toggle (admin only) -->
-		{#if $session?.role === 'admin'}
-			<label class="flex items-center justify-between cursor-pointer">
-				<span class="text-xs text-gray-600 dark:text-gray-400">Update notifications</span>
-				<ToggleSwitch value={$showUpdateToastPref} onchange={(v) => showUpdateToastPref.set(v)} />
-			</label>
-			<p class="text-[11px] text-gray-400 dark:text-gray-600 -mt-1">
-				Show a toast when a new version of cptr is available.
-			</p>
-		{/if}
-
 		<!-- Sound toggle -->
 		<label class="flex items-center justify-between cursor-pointer">
 			<span class="text-xs text-gray-600 dark:text-gray-400">Notification sound</span>
@@ -143,6 +132,17 @@
 			</p>
 		</div>
 	</div>
+
+	{#if $session?.role === 'admin'}
+		<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">Updates</h3>
+		<label class="flex items-center justify-between cursor-pointer">
+			<span class="text-xs text-gray-600 dark:text-gray-400">Update notifications</span>
+			<ToggleSwitch value={$showUpdateToastPref} onchange={(v) => showUpdateToastPref.set(v)} />
+		</label>
+		<p class="text-[11px] text-gray-400 dark:text-gray-600 mt-1">
+			Show a toast when a new version of cptr is available.
+		</p>
+	{/if}
 
 	<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">Message queue</h3>
 	<div class="flex gap-1">
