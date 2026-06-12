@@ -947,7 +947,7 @@ async def run_chat_task(
                         if name == "create_artifact":
                             result = await create_artifact(**event["arguments"], workspace=workspace)
                         else:
-                            result = await execute_tool(name, event["arguments"], workspace)
+                            result = await execute_tool(name, event["arguments"], {"workspace": workspace, "user_id": user_id, "model_id": model})
                         item["status"] = "completed"
                         output_items.append(item)
                         result_item = {

@@ -512,8 +512,10 @@ async def approve_tool(chat_id: str, message_id: str, body: ApproveRequest, requ
         # Execute the tool
         from cptr.utils.tools import execute_tool
 
+        model_id = msg.model or ""
         result = await execute_tool(
-            call["name"], call.get("arguments", {}), chat.meta.get("workspace", "")
+            call["name"], call.get("arguments", {}),
+            {"workspace": chat.meta.get("workspace", ""), "user_id": user_id, "model_id": model_id},
         )
         call["status"] = "completed"
         output.append(
@@ -540,7 +542,6 @@ async def approve_tool(chat_id: str, message_id: str, body: ApproveRequest, requ
         await ChatMessage.update(message_id, output=output, done=False)
 
         # Resolve connection and continue
-        model_id = msg.model or ""
         connection, bare_model = await _resolve_connection(model_id, request.app.state)
         workspace = chat.meta.get("workspace", "") if chat.meta else ""
 
