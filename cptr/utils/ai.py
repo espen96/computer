@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from collections.abc import AsyncIterator
 from typing import Dict, List
 
@@ -501,11 +502,16 @@ def _to_responses_input(messages: list[dict], instructions: str) -> list[dict]:
         elif role == "assistant" and m.get("tool_calls"):
             for tc in m["tool_calls"]:
                 args = tc["function"].get("arguments", "{}")
+                call_id = tc.get("id", "")
+                # Responses API requires id to start with "fc_"
+                fc_id = tc.get("fc_id", "")
+                if not fc_id or not fc_id.startswith("fc_"):
+                    fc_id = f"fc_{call_id.replace('call_', '', 1) or uuid.uuid4().hex}"
                 items.append(
                     {
                         "type": "function_call",
-                        "id": tc.get("fc_id", tc.get("id", "")),
-                        "call_id": tc.get("id", ""),
+                        "id": fc_id,
+                        "call_id": call_id,
                         "name": tc["function"]["name"],
                         "arguments": args if isinstance(args, str) else json.dumps(args),
                         "status": "completed",
