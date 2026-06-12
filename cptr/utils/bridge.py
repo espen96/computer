@@ -350,12 +350,80 @@ class BotManager:
         if cmd == "/help":
             help_text = (
                 "/new — Start a new conversation\n"
-                "/reset — Same as /new\n"
+                "/workspace <name> — Switch workspace (starts new chat)\n"
+                "/workspaces — List available workspaces\n"
                 "/help — Show this message"
             )
             if adapter:
                 try:
                     await adapter.send(event.chat_id, help_text)
+                except Exception:
+                    pass
+            return
+
+        if cmd == "/workspaces":
+            from cptr.models import Workspace
+            workspaces = await Workspace.get_by_user(bot["user_id"])
+            if not workspaces:
+                if adapter:
+                    await adapter.send(event.chat_id, "No workspaces found.")
+                return
+            current = bot.get("workspace", "")
+            lines = []
+            for ws in workspaces:
+                marker = " ←" if ws.path == current else ""
+                lines.append(f"• {ws.name}{marker}")
+            if adapter:
+                try:
+                    await adapter.send(event.chat_id, "\n".join(lines))
+                except Exception:
+                    pass
+            return
+
+        if cmd == "/workspace":
+            # /workspace <name> — switch workspace
+            parts = clean.split(None, 1)
+            ws_name = parts[1].strip() if len(parts) > 1 else ""
+            if not ws_name:
+                if adapter:
+                    await adapter.send(event.chat_id, "Usage: /workspace <name>")
+                return
+
+            from cptr.models import Workspace
+            workspaces = await Workspace.get_by_user(bot["user_id"])
+            match = None
+            ws_lower = ws_name.lower()
+            for ws in workspaces:
+                if ws.name.lower() == ws_lower or ws.path.lower().endswith("/" + ws_lower):
+                    match = ws
+                    break
+            # Fuzzy: partial match
+            if not match:
+                for ws in workspaces:
+                    if ws_lower in ws.name.lower():
+                        match = ws
+                        break
+
+            if not match:
+                if adapter:
+                    await adapter.send(event.chat_id, f"Workspace '{ws_name}' not found. Use /workspaces to list.")
+                return
+
+            # Update bot config with new workspace
+            from cptr.utils.config import Config
+            bots_raw = await Config.get("bots") or []
+            for b in bots_raw:
+                if b.get("id") == bot["id"]:
+                    b["workspace"] = match.path
+                    break
+            await Config.upsert({"bots": bots_raw})
+            bot["workspace"] = match.path
+
+            # Start a new chat in the new workspace
+            await self._create_chat(event, bot)
+            if adapter:
+                try:
+                    await adapter.send(event.chat_id, f"✨ Switched to {match.name}\nNew conversation started.")
                 except Exception:
                     pass
             return
