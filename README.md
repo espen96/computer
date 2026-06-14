@@ -34,7 +34,7 @@ cptr run --host 0.0.0.0
 | | |
 |---|---|
 | 📁 **File browser** | Navigate, create, rename, upload, drag and drop. Icons by type, sizes at a glance. |
-| ⌨️ **Terminal** | Full PTY-backed shell in the browser. Anything you'd run at your desk. |
+| ⌨️ **Terminal** | Full shell in the browser. Run your tools, your scripts, or your favourite coding agent. |
 | 🔀 **Git** | Stage, commit, diff, branch, push. Visual changes view. No command line required. |
 | ✏️ **Editor** | Syntax-highlighted editing with tabs. Open multiple files side by side. |
 | 📂 **Workspaces** | Multiple projects, one instance. Switch without losing your place. |
