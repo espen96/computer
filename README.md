@@ -23,20 +23,35 @@ cptr run
 
 Or with [uv](https://docs.astral.sh/uv/): `uvx cptr@latest run`
 
-Opens in your browser. From other devices:
+Opens in your browser at `http://localhost:8000`.
+
+### Access from your phone
+
+Same Wi-Fi? Bind to all interfaces:
 
 ```bash
 cptr run --host 0.0.0.0
 ```
+
+Open `http://<your-computer-ip>:8000` on your phone.
+
+Not on the same network? Use a tunnel:
+
+- **[Tailscale](https://tailscale.com)** creates a private mesh network between your devices. Recommended.
+- **[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)** gives you a permanent URL through Cloudflare's edge.
+- **[ngrok](https://ngrok.com)** gives you a public URL in one command.
+
+Or skip networking entirely and connect a [messaging bot](#messaging-bots) instead.
 
 ## What you get
 
 | | |
 |---|---|
 | 📁 **File browser** | Navigate, create, rename, upload, drag and drop. Icons by type, sizes at a glance. |
-| ⌨️ **Terminal** | Full PTY-backed shell in the browser. Anything you'd run at your desk. |
+| ⌨️ **Terminal** | Full shell in the browser. Run your tools, your scripts, or your favourite coding agent. |
 | 🔀 **Git** | Stage, commit, diff, branch, push. Visual changes view. No command line required. |
 | ✏️ **Editor** | Syntax-highlighted editing with tabs. Open multiple files side by side. |
+| 🗂️ **Tabs** | Open terminals, files, chats, and tools in separate tabs. Rearrange or split your layout. |
 | 📂 **Workspaces** | Multiple projects, one instance. Switch without losing your place. |
 | 🔍 **Search** | Find files by name, search across file contents and chat history. ⌘K to find anything. |
 | 📱 **Mobile-first** | Not a desktop UI made smaller. Built for the screen in your pocket. |
@@ -62,6 +77,8 @@ Bring your own API key. Works with OpenAI, Anthropic, Ollama, or any OpenAI-comp
 | 🤖 **Sub-agents** | AI spins up parallel workers for complex tasks. Each gets full tool access. |
 | 🔌 **Tool servers** | Connect external tools via MCP or OpenAPI. |
 | 🧠 **Context compaction** | Long conversations are automatically summarised to stay fast. |
+
+Already have a favourite terminal agent? Claude Code, Codex, Gemini CLI, Cursor, Grok, OpenCode, Kilo Code, and Pi all plug straight in. Use the subscription you already pay for.
 
 ## Messaging bots
 

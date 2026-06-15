@@ -29,6 +29,14 @@ CHAT_TOOL_MAX_CHARS = int(os.environ.get("CHAT_TOOL_MAX_CHARS", "50000"))
 CHAT_TOOL_COMMAND_MAX_CHARS = int(os.environ.get("CHAT_TOOL_COMMAND_MAX_CHARS", "8000"))
 CHAT_COMPACT_TOKEN_THRESHOLD = int(os.environ.get("CHAT_COMPACT_TOKEN_THRESHOLD", "80000"))
 
+# ── Execute timeout ─────────────────────────────────────────
+# Default wait (seconds) for run_command / check_task when the caller
+# doesn't pass an explicit wait value.  None = return immediately.
+EXECUTE_TIMEOUT: float | None = None
+_execute_timeout = os.environ.get("CPTR_EXECUTE_TIMEOUT")
+if _execute_timeout is not None:
+    EXECUTE_TIMEOUT = float(_execute_timeout)
+
 # ── AI stream settings ──────────────────────────────────────
 STREAM_CONNECT_TIMEOUT_SECONDS = float(os.environ.get("CPTR_STREAM_CONNECT_TIMEOUT", "30"))
 STREAM_READ_TIMEOUT_SECONDS = float(os.environ.get("CPTR_STREAM_READ_TIMEOUT", "300"))

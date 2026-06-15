@@ -11,6 +11,7 @@
 		gitCommit,
 		gitPull,
 		gitPush,
+		gitUncommit,
 		checkoutBranch,
 		createGitBranch
 	} from '$lib/apis/git';
@@ -54,14 +55,38 @@
 	const allStaged = $derived(totalChanges > 0 && unstagedFiles.length === 0);
 	const someStaged = $derived(stagedFiles.length > 0 && unstagedFiles.length > 0);
 
-	// Read from centralized store instead of independent polling
 	let gitStatus = $derived(gitStatusStore.status as {
 		is_repo: boolean;
 		branch: string;
+		upstream: string;
+		remote_url: string;
 		ahead: number;
 		behind: number;
 		files: GitFile[];
 	} | null);
+
+	// Branch has never been pushed to remote
+	const needsPublish = $derived(!gitStatus?.upstream);
+	const unpushedCount = $derived(needsPublish ? (commits?.length ?? 0) : (gitStatus?.ahead ?? 0));
+
+	// Convert git remote URL to browser URL
+	const remoteWebUrl = $derived.by(() => {
+		const url = gitStatus?.remote_url;
+		if (!url) return '';
+		// SSH: git@github.com:user/repo.git
+		const sshMatch = url.match(/^git@([^:]+):(.+?)(\.git)?$/);
+		if (sshMatch) return `https://${sshMatch[1]}/${sshMatch[2]}`;
+		// HTTPS: https://github.com/user/repo.git
+		return url.replace(/\.git$/, '');
+	});
+
+	const remotePlatform = $derived.by(() => {
+		if (!remoteWebUrl) return '';
+		if (remoteWebUrl.includes('github.com')) return 'GitHub';
+		if (remoteWebUrl.includes('gitlab.com') || remoteWebUrl.includes('gitlab')) return 'GitLab';
+		if (remoteWebUrl.includes('bitbucket')) return 'Bitbucket';
+		try { return new URL(remoteWebUrl).hostname; } catch { return 'Remote'; }
+	});
 
 	// Clear stale selection when file is no longer in the changed list
 	$effect(() => {
@@ -193,6 +218,19 @@
 		await refresh();
 	}
 
+	async function doUncommit() {
+		loading = true;
+		try {
+			const d = await gitUncommit(workspacePath);
+			flash($t('git.uncommitted'));
+			switchView('changes');
+		} catch (e) {
+			flash(e instanceof Error ? e.message : 'Failed to undo commit');
+		}
+		loading = false;
+		await refresh();
+	}
+
 	async function doPull() {
 		loading = true;
 		const d = await gitPull(workspacePath);
@@ -203,7 +241,10 @@
 
 	async function doPush() {
 		loading = true;
-		const d = await gitPush(workspacePath);
+		const d = await gitPush(workspacePath, {
+			set_upstream: needsPublish,
+			branch: needsPublish ? gitStatus?.branch : undefined
+		});
 		flash(d.ok ? $t('git.pushed') : d.message);
 		loading = false;
 		await refresh();
@@ -237,6 +278,7 @@
 
 	// Context menu
 	let contextMenu = $state<{ file: GitFile; anchor: HTMLElement } | null>(null);
+	let commitMenu = $state<{ commit: Commit; isLatest: boolean; anchor: HTMLElement } | null>(null);
 
 	function openFileMenu(e: MouseEvent, file: GitFile) {
 		e.stopPropagation();
@@ -245,6 +287,15 @@
 
 	function closeContextMenu() {
 		contextMenu = null;
+	}
+
+	function openCommitMenu(e: MouseEvent, commit: Commit, isLatest: boolean) {
+		e.stopPropagation();
+		commitMenu = { commit, isLatest, anchor: e.currentTarget as HTMLElement };
+	}
+
+	function closeCommitMenu() {
+		commitMenu = null;
 	}
 
 	async function discardFile(path: string) {
@@ -315,6 +366,8 @@
 				icon: 'upload',
 				action: doPush
 			};
+		if (!gitStatus.upstream)
+			return { label: $t('git.publish'), icon: 'upload', action: doPush };
 		return { label: $t('git.fetch'), icon: 'refresh', action: doPull };
 	});
 
@@ -571,6 +624,19 @@
 
 					<div class="flex-1"></div>
 
+					<!-- View on remote -->
+					{#if remoteWebUrl}
+						<a
+							href={remoteWebUrl}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="flex items-center justify-center w-6 h-6 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/6 transition-colors duration-75"
+							use:tooltip={'View on ' + remotePlatform}
+						>
+							<Icon name="external-link" size={12} />
+						</a>
+					{/if}
+
 					<!-- Maximize toggle -->
 					<button
 						class="flex items-center justify-center w-6 h-6 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/6 transition-colors duration-75"
@@ -717,20 +783,43 @@
 						{:else}
 							<!-- History: commit list -->
 							<div class="flex-1 overflow-y-auto">
-								{#each commits as c}
+								{#each commits as c, i}
+									{#if i === unpushedCount && unpushedCount > 0}
+										<div class="flex items-center gap-2 px-2.5 py-1 border-b border-gray-100 dark:border-white/4 bg-gray-50/50 dark:bg-white/2">
+											<Icon name="upload" size={10} class="text-gray-400 dark:text-gray-600 shrink-0" />
+											<span class="text-[10px] text-gray-400 dark:text-gray-600">
+												{unpushedCount} unpushed {unpushedCount === 1 ? 'commit' : 'commits'}
+											</span>
+										</div>
+									{/if}
 									<button
-										class="flex flex-col w-full px-2.5 py-1.5 text-left border-b border-gray-50 dark:border-white/3 transition-colors duration-75
+										class="group flex items-center gap-1.5 w-full px-2.5 py-1.5 text-left border-b border-gray-50 dark:border-white/3 transition-colors duration-75
 											{selectedCommit?.hash === c.hash
 											? 'bg-gray-100 dark:bg-white/8'
 											: 'hover:bg-gray-50 dark:hover:bg-white/3'}"
 										onclick={() => selectCommit(c)}
 									>
-										<span class="text-xs text-gray-800 dark:text-gray-200 truncate w-full"
-											>{c.message}</span
+										{#if i < unpushedCount}
+											<span class="w-1.5 h-1.5 rounded-full bg-blue-500 dark:bg-blue-400 shrink-0" title="Unpushed"></span>
+										{/if}
+										<div class="flex flex-col min-w-0 flex-1">
+											<span class="text-xs text-gray-800 dark:text-gray-200 truncate w-full"
+												>{c.message}</span
+											>
+											<span class="text-[10px] text-gray-400 dark:text-gray-600 font-mono"
+												>{c.short_hash} · {c.author} · {relTime(c.date)}</span
+											>
+										</div>
+										<!-- svelte-ignore a11y_no_static_element_interactions -->
+										<span
+											class="flex items-center justify-center w-5 h-5 rounded shrink-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10 transition-all duration-75"
+											role="button"
+											tabindex="-1"
+											onclick={(e) => openCommitMenu(e, c, i === 0)}
+											aria-label={$t('files.moreActions')}
 										>
-										<span class="text-[10px] text-gray-400 dark:text-gray-600 font-mono"
-											>{c.short_hash} · {c.author} · {relTime(c.date)}</span
-										>
+											<Icon name="three-dots" size={12} />
+										</span>
 									</button>
 								{/each}
 								{#if !commits.length}
@@ -818,7 +907,7 @@
 										>{$t('git.selectFile')}</span
 									>
 								{:else}
-									<span class="text-[11px] text-gray-400 dark:text-gray-600"
+									<span class="text-[11px] text-gray-400 dark:text-gray-600 font-sans"
 										>{$t('git.noLocalChanges')}</span
 									>
 								{/if}
@@ -852,6 +941,36 @@
 			}
 		]}
 		onclose={closeContextMenu}
+	/>
+{/if}
+
+{#if commitMenu}
+	<DropdownMenu
+		anchor={commitMenu.anchor}
+		items={[
+			...(commitMenu.isLatest
+				? [
+						{
+							label: $t('git.undoCommit'),
+							icon: 'undo',
+							onclick: () => {
+								doUncommit();
+								closeCommitMenu();
+							}
+						}
+					]
+				: []),
+			{
+				label: $t('git.copyCommitHash'),
+				icon: 'copy',
+				onclick: () => {
+					navigator.clipboard.writeText(commitMenu!.commit.hash);
+					flash($t('git.copiedPath'));
+					closeCommitMenu();
+				}
+			}
+		]}
+		onclose={closeCommitMenu}
 	/>
 {/if}
 

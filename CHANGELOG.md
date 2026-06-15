@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-06-15
+
+### Added
+
+- 🧙 **Setup wizard.** A friendly first-run guide walks you through picking a folder and connecting your AI. Pops up automatically after sign-up.
+- 🔌 **Local tool servers (stdio).** You can now connect MCP tool servers that run as local commands — not just over HTTP. Add the command and arguments from the Tool Servers tab.
+- 📄 **Read documents.** The AI can now open and read PDFs, Word docs, Excel spreadsheets, PowerPoint files, and more.
+- 💬 **Send input to running commands.** The AI can now type into running processes — answering prompts, interacting with REPLs, or sending Ctrl-C.
+- ↩️ **Undo last commit.** Changed your mind? Undo the last commit from the Git history and get your changes back in staging.
+- 🚀 **Publish branches.** Push a new branch for the first time with one click. The button says "Publish" when there's no upstream yet.
+- 🔗 **View on GitHub / GitLab.** A new link in the Git panel takes you straight to your repo on the web.
+- 📋 **Commit actions menu.** Click the dots on any commit to copy its hash. On the latest commit you can also undo it.
+- 🔗 **Share cptr.** Quick links on the About page to share cptr on X, Reddit, LinkedIn, or copy the URL.
+
+### Changed
+
+- ⚡ **Smoother command execution.** Commands now run in a real terminal (PTY) by default. You can choose how long to wait for output before moving on.
+- 🧠 **Better reasoning model support.** Models like o3 and o4-mini now keep their chain of thought across tool calls, giving more accurate results.
+- 📝 **Updated README.** New sections on accessing cptr from your phone and a list of compatible terminal agents.
+- 🔧 **Clearer error messages.** Validation errors now show what actually went wrong instead of a generic status code.
+
+### Fixed
+
+- 🔒 **Gateway connections working again.** Fixed an error that could break the gateway models endpoint.
+
 ## [0.4.3] - 2026-06-14
 
 ### Changed
