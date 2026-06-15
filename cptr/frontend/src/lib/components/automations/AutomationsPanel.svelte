@@ -8,7 +8,7 @@
 	import ToggleSwitch from '../common/ToggleSwitch.svelte';
 	import Spinner from '../common/Spinner.svelte';
 	import AutomationModal from './AutomationModal.svelte';
-	import { openChatTab, sidebarOpen } from '$lib/stores';
+	import { sidebarOpen } from '$lib/stores';
 	import {
 		getAutomations,
 		toggleAutomation,
@@ -335,10 +335,8 @@
 										class="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-75"
 										onclick={() => {
 											const ws = detail?.workspace;
-											if (ws) {
-												goto(`/?workspace=${encodeURIComponent(ws)}`);
-											}
-											setTimeout(() => openChatTab(run.chat_id!), 300);
+											const wsParam = ws ? `workspace=${encodeURIComponent(ws)}&` : '';
+											goto(`/?${wsParam}chatId=${encodeURIComponent(run.chat_id!)}`);
 										}}
 									>
 										{$t('automations.viewChat')}
