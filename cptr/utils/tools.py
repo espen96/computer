@@ -21,7 +21,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Callable, Optional, Pattern, get_type_hints
-from cptr.env import CHAT_TOOL_COMMAND_MAX_CHARS, CHAT_TOOL_MAX_CHARS
+from cptr.env import CHAT_TOOL_COMMAND_MAX_CHARS, CHAT_TOOL_MAX_CHARS, EXECUTE_TIMEOUT
 
 try:
     import fcntl
@@ -806,14 +806,14 @@ async def multi_edit_file(
 async def run_command(
     command: str,
     cwd: str = ".",
-    wait: int = 10,
+    wait: Optional[int] = None,
     *,
     workspace: str,
 ) -> str:
     """Run a shell command. Returns a task_id for status checks and input.
     :param command: The shell command to execute.
     :param cwd: Working directory relative to workspace root.
-    :param wait: Seconds to wait for output before returning (0-30). The command continues running regardless.
+    :param wait: Seconds to wait for the command to finish before returning (max 120). Returns early if done sooner. Null returns immediately. Use 30-60 for installs and builds, 5-10 for quick commands, null or 0 for long-lived servers.
     """
     work_dir = _resolve_path(cwd, workspace)
     if not work_dir.is_dir():
@@ -855,14 +855,17 @@ async def run_command(
         "done": False,
         "exit_code": None,
         "log_path": str(log_path),
+        "log_task": None,
     }
-    collect_task = asyncio.create_task(_collect_bg_output(task_id))
+    log_task = asyncio.create_task(_collect_bg_output(task_id))
+    _bg_tasks[task_id]["log_task"] = log_task
 
-    # Wait for quick commands to finish inline
-    wait = min(max(wait, 0), 30)
-    if wait > 0:
+    # Wait for the command to finish inline (matches open-terminal behaviour)
+    if wait is None and EXECUTE_TIMEOUT:
+        wait = EXECUTE_TIMEOUT
+    if wait is not None and wait > 0:
         try:
-            await asyncio.wait_for(asyncio.shield(collect_task), timeout=wait)
+            await asyncio.wait_for(asyncio.shield(log_task), timeout=min(wait, 120))
         except asyncio.TimeoutError:
             pass
 
@@ -886,15 +889,27 @@ async def run_command(
     )
 
 
-async def check_task(task_id: str, offset: int = 0, *, workspace: str) -> str:
+async def check_task(task_id: str, offset: int = 0, wait: Optional[int] = None, *, workspace: str) -> str:
     """Check status and recent output of a background task.
     :param task_id: The task ID returned by run_command.
     :param offset: Byte offset from previous check. Pass next_offset from the last response to get only new output.
+    :param wait: Seconds to wait for the task to finish before returning (max 120). Returns early if done sooner. Null returns immediately.
     """
     task = _bg_tasks.get(task_id)
     if not task:
         available = list(_bg_tasks.keys())
         return f"Error: no task with id '{task_id}'. Active tasks: {available or 'none'}"
+
+    # Optionally wait for the task to finish
+    if wait is None and EXECUTE_TIMEOUT:
+        wait = EXECUTE_TIMEOUT
+    if wait is not None and wait > 0 and not task.get("done"):
+        collect = task.get("log_task")
+        if collect and not collect.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(collect), timeout=min(wait, 120))
+            except asyncio.TimeoutError:
+                pass
 
     buf = task["output"]
     total = task.get("total_bytes", 0)
@@ -1815,6 +1830,16 @@ async def _execute_external_tool(name: str, args: dict) -> str:
 _TYPE_MAP = {str: "string", int: "integer", bool: "boolean", float: "number"}
 
 
+def _unwrap_optional(hint):
+    """If hint is Optional[X] (Union[X, None]), return X."""
+    args = getattr(hint, '__args__', None)
+    if args and type(None) in args:
+        real = [a for a in args if a is not type(None)]
+        if len(real) == 1:
+            return real[0]
+    return hint
+
+
 def _parse_param_descriptions(docstring: str) -> dict[str, str]:
     """Extract :param name: description lines from docstring."""
     descs: dict[str, str] = {}
@@ -1843,10 +1868,14 @@ def _fn_to_schema(name: str, fn) -> dict:
         # Skip injected context params (keyword-only, never exposed to LLM)
         if param.kind == inspect.Parameter.KEYWORD_ONLY:
             continue
-        ptype = _TYPE_MAP.get(hints.get(pname), "string")  # type: ignore[arg-type]
+        raw_hint = hints.get(pname)
+        hint = _unwrap_optional(raw_hint) if raw_hint else raw_hint
+        ptype = _TYPE_MAP.get(hint, "string")  # type: ignore[arg-type]
         prop: dict = {"type": ptype}
         if pname in param_descs:
             prop["description"] = param_descs[pname]
+        if param.default is not inspect.Parameter.empty:
+            prop["default"] = param.default
         properties[pname] = prop
         # Positional with no default → required
         if param.default is inspect.Parameter.empty:
