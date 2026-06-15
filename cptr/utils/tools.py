@@ -23,55 +23,174 @@ from pathlib import Path
 from typing import Callable, Optional, Pattern, get_type_hints
 from cptr.env import CHAT_TOOL_COMMAND_MAX_CHARS, CHAT_TOOL_MAX_CHARS
 
+try:
+    import fcntl
+    import pty
+    import signal
+    import struct
+    import subprocess
+    import termios
+
+    _PTY_AVAILABLE = True
+except ImportError:
+    import signal
+    import subprocess
+
+    _PTY_AVAILABLE = False  # Windows
+
 
 # ── Background task state ───────────────────────────────────
 
-_bg_tasks: dict[str, dict] = {}  # task_id → {proc, output, command, done}
+_bg_tasks: dict[str, dict] = {}
+# task_id → {
+#   "master_fd": int | None,   PTY mode (Unix) — read/write through this fd
+#   "proc": Popen | Process,   The child process handle
+#   "output": bytearray,       In-memory ring buffer (256KB cap)
+#   "command": str,
+#   "done": bool,
+#   "exit_code": int | None,
+#   "log_path": str,
+# }
 _BG_TASK_LIMIT = 5
+_MAX_LOG_SIZE = 50 * 1024 * 1024  # 50MB — rotate when exceeded
 
 
-async def _collect_bg_output(task_id: str, proc: asyncio.subprocess.Process):
-    """Collect output from a background process into memory + JSONL log."""
+def _spawn_pty(command: str, cwd: str, env: dict) -> tuple:
+    """Spawn a command under a PTY (Unix only). Returns (proc, master_fd)."""
+    master_fd, slave_fd = pty.openpty()
+    try:
+        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+        proc = subprocess.Popen(
+            command,
+            shell=True,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            cwd=cwd,
+            env=env,
+            start_new_session=True,
+        )
+    except Exception:
+        os.close(slave_fd)
+        os.close(master_fd)
+        raise
+    os.close(slave_fd)
+    return proc, master_fd
+
+
+def _kill_process_group(pid: int, force: bool = False) -> None:
+    """Send signal to the child's entire process group.
+
+    SIGTERM for graceful shutdown (default), SIGKILL for force.
+    Falls back to signalling just the leader if the group is gone.
+    """
+    sig = signal.SIGKILL if force else signal.SIGTERM
+    try:
+        os.killpg(pid, sig)
+    except (ProcessLookupError, PermissionError):
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            pass
+
+
+def _rotate_log(log_path: str, log_file) -> tuple:
+    """Keep the newest half of the log file. Returns new (file, bytes_written)."""
+    log_file.flush()
+    log_file.close()
+
+    with open(log_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    keep = lines[len(lines) // 2:]
+
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write(json.dumps({"type": "log_rotated", "ts": time.time()}) + "\n")
+        for line in keep:
+            f.write(line)
+
+    new_file = open(log_path, "a", encoding="utf-8")
+    new_size = sum(len(l.encode("utf-8", errors="replace")) for l in keep)
+    return new_file, new_size
+
+
+async def _collect_bg_output(task_id: str):
+    """Read output from a background process (PTY or pipe) into memory + JSONL log."""
     task = _bg_tasks.get(task_id)
-    log_path = task.get("log_path") if task else None
+    if not task:
+        return
+
+    master_fd = task.get("master_fd")
+    proc = task["proc"]
+    log_path = task.get("log_path")
     log_file = None
+    log_bytes = 0
 
     try:
         if log_path:
             Path(log_path).parent.mkdir(parents=True, exist_ok=True)
             log_file = open(log_path, "a", encoding="utf-8")
-            log_file.write(
-                json.dumps({"type": "start", "command": task["command"],
-                            "ts": time.time()}) + "\n"
-            )
+            entry = json.dumps({"type": "start", "command": task["command"],
+                                "pid": proc.pid, "ts": time.time()}) + "\n"
+            log_file.write(entry)
             log_file.flush()
+            log_bytes += len(entry.encode("utf-8", errors="replace"))
+
+        loop = asyncio.get_event_loop()
 
         while True:
-            chunk = await proc.stdout.read(4096)
-            if not chunk:
-                break
+            # Read from PTY fd (Unix) or subprocess pipe (Windows fallback)
+            if master_fd is not None:
+                try:
+                    chunk = await loop.run_in_executor(None, os.read, master_fd, 4096)
+                    if not chunk:
+                        break
+                except OSError:
+                    break  # EIO when child exits
+            else:
+                chunk = await proc.stdout.read(4096)
+                if not chunk:
+                    break
+
             task = _bg_tasks.get(task_id)
             if task:
                 task["output"].extend(chunk)
-                # Cap in-memory buffer at 256KB
                 if len(task["output"]) > 256 * 1024:
                     task["output"] = task["output"][-256 * 1024:]
+
             if log_file:
-                log_file.write(
-                    json.dumps({"type": "output",
-                                "data": chunk.decode(errors="replace"),
-                                "ts": time.time()}) + "\n"
-                )
+                entry = json.dumps({"type": "output",
+                                    "data": chunk.decode(errors="replace"),
+                                    "ts": time.time()}) + "\n"
+                entry_size = len(entry.encode("utf-8", errors="replace"))
+                if log_bytes + entry_size > _MAX_LOG_SIZE:
+                    log_file, log_bytes = _rotate_log(log_path, log_file)
+                log_file.write(entry)
                 log_file.flush()
+                log_bytes += entry_size
     except Exception:
         pass
     finally:
+        # Wait for the process to finish and collect exit code
         task = _bg_tasks.get(task_id)
+        if master_fd is not None:
+            exit_code = await loop.run_in_executor(None, proc.wait)
+            try:
+                os.close(master_fd)
+            except OSError:
+                pass
+        else:
+            await proc.wait()
+            exit_code = proc.returncode
+
         if task:
             task["done"] = True
+            task["exit_code"] = exit_code
+            task["master_fd"] = None  # fd is closed
+
         if log_file:
             log_file.write(
-                json.dumps({"type": "end", "exit_code": proc.returncode,
+                json.dumps({"type": "end", "exit_code": exit_code,
                             "ts": time.time()}) + "\n"
             )
             log_file.close()
@@ -703,16 +822,20 @@ async def run_command(
         return f"Error: too many running tasks ({active}/{_BG_TASK_LIMIT}). Kill one first."
 
     env = {**os.environ, "PAGER": "cat", "GIT_PAGER": "cat"}
+    master_fd = None
 
     try:
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            stdin=asyncio.subprocess.PIPE,
-            cwd=str(work_dir),
-            env=env,
-        )
+        if _PTY_AVAILABLE:
+            proc, master_fd = _spawn_pty(command, str(work_dir), env)
+        else:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                stdin=asyncio.subprocess.PIPE,
+                cwd=str(work_dir),
+                env=env,
+            )
     except Exception as e:
         return f"Error: {e}"
 
@@ -722,13 +845,15 @@ async def run_command(
     log_path = log_dir / f"{task_id}.jsonl"
 
     _bg_tasks[task_id] = {
+        "master_fd": master_fd,
         "proc": proc,
         "output": bytearray(),
         "command": command,
         "done": False,
+        "exit_code": None,
         "log_path": str(log_path),
     }
-    collect_task = asyncio.create_task(_collect_bg_output(task_id, proc))
+    collect_task = asyncio.create_task(_collect_bg_output(task_id))
 
     # Wait for quick commands to finish inline
     wait = min(max(wait, 0), 30)
@@ -742,7 +867,7 @@ async def run_command(
     output = task["output"].decode(errors="replace") if task else ""
     output = _truncate_output(output, max_chars=CHAT_TOOL_COMMAND_MAX_CHARS)
     done = task.get("done", False) if task else True
-    exit_code = proc.returncode
+    exit_code = task.get("exit_code") if task else None
 
     if done:
         status = f"exited (code {exit_code})"
@@ -758,46 +883,45 @@ async def run_command(
 
 async def check_task(task_id: str, *, workspace: str) -> str:
     """Check status and recent output of a background task.
-    :param task_id: The task ID returned by run_command with background=true.
+    :param task_id: The task ID returned by run_command.
     """
     task = _bg_tasks.get(task_id)
     if not task:
         available = list(_bg_tasks.keys())
         return f"Error: no task with id '{task_id}'. Active tasks: {available or 'none'}"
 
-    proc = task["proc"]
     output = task["output"].decode(errors="replace")
     output = _truncate_output(output, max_chars=CHAT_TOOL_COMMAND_MAX_CHARS)
 
-    done = task.get("done", False) or proc.returncode is not None
-    if done:
-        status = f"exited (code {proc.returncode})"
+    if task.get("done", False):
+        status = f"exited (code {task.get('exit_code')})"
     else:
         status = "running"
 
     return f"Task {task_id}: {status}\nCommand: {task['command']}\n---\n{output}"
 
 
-async def kill_task(task_id: str, *, workspace: str) -> str:
-    """Kill a running background task.
+async def kill_task(task_id: str, force: bool = False, *, workspace: str) -> str:
+    """Terminate a running task. Sends SIGTERM for graceful shutdown by default.
     :param task_id: The task ID to kill.
+    :param force: Send SIGKILL instead of SIGTERM for immediate termination.
     """
     task = _bg_tasks.get(task_id)
     if not task:
         available = list(_bg_tasks.keys())
         return f"Error: no task with id '{task_id}'. Active tasks: {available or 'none'}"
 
-    proc = task["proc"]
-    if proc.returncode is not None:
+    if task.get("done", False):
+        exit_code = task.get("exit_code")
         _bg_tasks.pop(task_id, None)
-        return f"Task {task_id} already finished (code {proc.returncode})"
+        return f"Task {task_id} already finished (code {exit_code})"
 
-    try:
-        proc.kill()
-    except ProcessLookupError:
-        pass
+    proc = task["proc"]
+    _kill_process_group(proc.pid, force=force)
     _bg_tasks.pop(task_id, None)
-    return f"Killed task {task_id}"
+
+    action = "Killed" if force else "Terminated"
+    return f"{action} task {task_id}"
 
 
 async def send_input(task_id: str, input: str, *, workspace: str) -> str:
@@ -810,12 +934,8 @@ async def send_input(task_id: str, input: str, *, workspace: str) -> str:
         available = list(_bg_tasks.keys())
         return f"Error: no task '{task_id}'. Active: {available or 'none'}"
 
-    proc = task["proc"]
-    if proc.returncode is not None:
-        return f"Error: task {task_id} already exited (code {proc.returncode})"
-
-    if proc.stdin is None:
-        return f"Error: task {task_id} has no stdin"
+    if task.get("done", False):
+        return f"Error: task {task_id} already exited (code {task.get('exit_code')})"
 
     # LLMs emit literal "\n" — convert to real characters
     try:
@@ -823,11 +943,23 @@ async def send_input(task_id: str, input: str, *, workspace: str) -> str:
     except (UnicodeDecodeError, ValueError):
         text = input
 
-    try:
-        proc.stdin.write(text.encode())
-        await proc.stdin.drain()
-    except (BrokenPipeError, ConnectionResetError, OSError):
-        return f"Error: stdin closed for task {task_id}"
+    master_fd = task.get("master_fd")
+    if master_fd is not None:
+        # PTY mode: write to master fd
+        try:
+            os.write(master_fd, text.encode())
+        except OSError:
+            return f"Error: PTY closed for task {task_id}"
+    else:
+        # Pipe mode fallback
+        proc = task["proc"]
+        if proc.stdin is None:
+            return f"Error: task {task_id} has no stdin"
+        try:
+            proc.stdin.write(text.encode())
+            await proc.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return f"Error: stdin closed for task {task_id}"
 
     return f"Sent {len(text)} bytes to task {task_id}"
 
