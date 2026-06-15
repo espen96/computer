@@ -155,6 +155,7 @@ async def _collect_bg_output(task_id: str):
             task = _bg_tasks.get(task_id)
             if task:
                 task["output"].extend(chunk)
+                task["total_bytes"] += len(chunk)
                 if len(task["output"]) > 256 * 1024:
                     task["output"] = task["output"][-256 * 1024:]
 
@@ -585,8 +586,9 @@ async def create_file(
     :param overwrite: Set to true to overwrite an existing file.
     :param artifact_type: Set to 'implementation_plan' to present a plan for user review before coding.
     """
-    # Artifact-only: save to .cptr/artifacts/ (same location as create_artifact)
-    if artifact_type and not path:
+    # Artifact mode: save to .cptr/artifacts/ (same location as create_artifact)
+    # When artifact_type is set, path is ignored.
+    if artifact_type:
         from datetime import datetime, timezone
 
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
@@ -848,6 +850,7 @@ async def run_command(
         "master_fd": master_fd,
         "proc": proc,
         "output": bytearray(),
+        "total_bytes": 0,
         "command": command,
         "done": False,
         "exit_code": None,
@@ -868,6 +871,7 @@ async def run_command(
     output = _truncate_output(output, max_chars=CHAT_TOOL_COMMAND_MAX_CHARS)
     done = task.get("done", False) if task else True
     exit_code = task.get("exit_code") if task else None
+    next_offset = task.get("total_bytes", 0) if task else 0
 
     if done:
         status = f"exited (code {exit_code})"
@@ -877,28 +881,43 @@ async def run_command(
     return (
         f"Task {task_id}: {status}\n"
         f"Command: {command}\n"
+        f"next_offset: {next_offset}\n"
         f"---\n{output}"
     )
 
 
-async def check_task(task_id: str, *, workspace: str) -> str:
+async def check_task(task_id: str, offset: int = 0, *, workspace: str) -> str:
     """Check status and recent output of a background task.
     :param task_id: The task ID returned by run_command.
+    :param offset: Byte offset from previous check. Pass next_offset from the last response to get only new output.
     """
     task = _bg_tasks.get(task_id)
     if not task:
         available = list(_bg_tasks.keys())
         return f"Error: no task with id '{task_id}'. Active tasks: {available or 'none'}"
 
-    output = task["output"].decode(errors="replace")
+    buf = task["output"]
+    total = task.get("total_bytes", 0)
+    buf_start = total - len(buf)  # byte offset of first byte in buffer
+
+    if offset <= buf_start:
+        # Requested offset is before buffer start (old output was trimmed)
+        raw = buf
+    else:
+        # Slice to only return new output since offset
+        skip = offset - buf_start
+        raw = buf[skip:]
+
+    output = raw.decode(errors="replace")
     output = _truncate_output(output, max_chars=CHAT_TOOL_COMMAND_MAX_CHARS)
+    next_offset = total
 
     if task.get("done", False):
         status = f"exited (code {task.get('exit_code')})"
     else:
         status = "running"
 
-    return f"Task {task_id}: {status}\nCommand: {task['command']}\n---\n{output}"
+    return f"Task {task_id}: {status}\nCommand: {task['command']}\nnext_offset: {next_offset}\n---\n{output}"
 
 
 async def kill_task(task_id: str, force: bool = False, *, workspace: str) -> str:
