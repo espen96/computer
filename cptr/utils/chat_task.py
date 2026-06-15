@@ -682,7 +682,9 @@ async def _load_message_history(chat_id: str, message_id: str) -> tuple[list[dic
                             if turn["reasoning"]:
                                 entry["reasoning_items"] = turn["reasoning"]
                         else:
-                            # Subsequent turns: create a new assistant entry
+                            # Subsequent turns: flush the pending entry (last tool
+                            # result from previous turn) before creating a new one.
+                            result.append(entry)
                             entry = {
                                 "role": "assistant",
                                 "content": "",
