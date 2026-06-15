@@ -17,6 +17,7 @@ import inspect
 import json
 import os
 import re
+import time
 import uuid
 from pathlib import Path
 from typing import Callable, Optional, Pattern, get_type_hints
@@ -30,8 +31,21 @@ _BG_TASK_LIMIT = 5
 
 
 async def _collect_bg_output(task_id: str, proc: asyncio.subprocess.Process):
-    """Collect output from a background process into the task buffer."""
+    """Collect output from a background process into memory + JSONL log."""
+    task = _bg_tasks.get(task_id)
+    log_path = task.get("log_path") if task else None
+    log_file = None
+
     try:
+        if log_path:
+            Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+            log_file = open(log_path, "a", encoding="utf-8")
+            log_file.write(
+                json.dumps({"type": "start", "command": task["command"],
+                            "ts": time.time()}) + "\n"
+            )
+            log_file.flush()
+
         while True:
             chunk = await proc.stdout.read(4096)
             if not chunk:
@@ -39,15 +53,28 @@ async def _collect_bg_output(task_id: str, proc: asyncio.subprocess.Process):
             task = _bg_tasks.get(task_id)
             if task:
                 task["output"].extend(chunk)
-                # Cap buffer at 256KB
+                # Cap in-memory buffer at 256KB
                 if len(task["output"]) > 256 * 1024:
-                    task["output"] = task["output"][-256 * 1024 :]
+                    task["output"] = task["output"][-256 * 1024:]
+            if log_file:
+                log_file.write(
+                    json.dumps({"type": "output",
+                                "data": chunk.decode(errors="replace"),
+                                "ts": time.time()}) + "\n"
+                )
+                log_file.flush()
     except Exception:
         pass
     finally:
         task = _bg_tasks.get(task_id)
         if task:
             task["done"] = True
+        if log_file:
+            log_file.write(
+                json.dumps({"type": "end", "exit_code": proc.returncode,
+                            "ts": time.time()}) + "\n"
+            )
+            log_file.close()
 
 
 # ── Helper ──────────────────────────────────────────────────
@@ -187,7 +214,37 @@ async def read_file(
         if size > 500_000:
             return f"Error: file too large ({size} bytes, max 500KB)"
 
-        lines = full.read_text(errors="replace").splitlines()
+        # Try strict text decoding first
+        try:
+            content = full.read_text(errors="strict")
+        except (UnicodeDecodeError, ValueError):
+            # Binary file — try document extraction (PDF, DOCX, XLSX, etc.)
+            try:
+                from cptr.utils.documents import extract_by_path
+
+                text = extract_by_path(str(full))
+                if text:
+                    lines = text.splitlines()
+                    total = len(lines)
+                    if start_line > 0 or end_line > 0:
+                        s = max(1, start_line) - 1
+                        e = min(total, end_line) if end_line > 0 else total
+                        selected = lines[s:e]
+                        numbered = [f"{i + s + 1}: {line}" for i, line in enumerate(selected)]
+                        return f"File: {path} | Lines {s + 1}-{e} of {total}\n" + "\n".join(numbered)
+                    capped = lines[:800]
+                    numbered = [f"{i + 1}: {line}" for i, line in enumerate(capped)]
+                    header = f"File: {path} | Total lines: {total}"
+                    if total > 800:
+                        header += " (showing first 800)"
+                    return header + "\n" + "\n".join(numbered)
+            except ImportError as e:
+                return f"Error: reading {full.suffix} files requires: {e}"
+            except Exception as e:
+                return f"Error: failed to extract text from {path}: {e}"
+            return f"Error: binary file ({full.suffix}), cannot read as text"
+
+        lines = content.splitlines()
         total = len(lines)
 
         if start_line > 0 or end_line > 0:
@@ -628,20 +685,22 @@ async def multi_edit_file(
 async def run_command(
     command: str,
     cwd: str = ".",
-    timeout: int = 30,
-    background: bool = False,
+    wait: int = 10,
     *,
     workspace: str,
 ) -> str:
-    """Run a shell command. Use background=true for long-running processes.
+    """Run a shell command. Returns a task_id for status checks and input.
     :param command: The shell command to execute.
     :param cwd: Working directory relative to workspace root.
-    :param timeout: Timeout in seconds (max 300, ignored if background).
-    :param background: Run in background and return a task_id for status checks.
+    :param wait: Seconds to wait for output before returning (0-30). The command continues running regardless.
     """
     work_dir = _resolve_path(cwd, workspace)
     if not work_dir.is_dir():
         return f"Error: not a directory: {cwd}"
+
+    active = sum(1 for t in _bg_tasks.values() if not t.get("done"))
+    if active >= _BG_TASK_LIMIT:
+        return f"Error: too many running tasks ({active}/{_BG_TASK_LIMIT}). Kill one first."
 
     env = {**os.environ, "PAGER": "cat", "GIT_PAGER": "cat"}
 
@@ -650,42 +709,51 @@ async def run_command(
             command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            stdin=asyncio.subprocess.PIPE,
             cwd=str(work_dir),
             env=env,
         )
-
-        if background:
-            active = sum(1 for t in _bg_tasks.values() if not t.get("done"))
-            if active >= _BG_TASK_LIMIT:
-                proc.kill()
-                return (
-                    f"Error: too many background tasks ({active}/{_BG_TASK_LIMIT}). Kill one first."
-                )
-
-            task_id = uuid.uuid4().hex[:8]
-            _bg_tasks[task_id] = {
-                "proc": proc,
-                "output": bytearray(),
-                "command": command,
-                "done": False,
-            }
-            asyncio.create_task(_collect_bg_output(task_id, proc))
-            return f"Background task started: {task_id}\nCommand: {command}\nUse check_task('{task_id}') to see output or kill_task('{task_id}') to stop it."
-
-        timeout = min(max(timeout, 5), 300)
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        output = stdout.decode(errors="replace").strip()
-        output = _truncate_output(output, max_chars=CHAT_TOOL_COMMAND_MAX_CHARS)
-
-        if proc.returncode != 0:
-            return f"Exit code {proc.returncode}\n{output}"
-        return output or "(no output)"
-
-    except asyncio.TimeoutError:
-        proc.kill()
-        return f"Error: command timed out after {timeout}s. Consider using background=true for long commands."
     except Exception as e:
         return f"Error: {e}"
+
+    task_id = uuid.uuid4().hex[:8]
+    log_dir = Path(workspace) / ".cptr" / "task_logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / f"{task_id}.jsonl"
+
+    _bg_tasks[task_id] = {
+        "proc": proc,
+        "output": bytearray(),
+        "command": command,
+        "done": False,
+        "log_path": str(log_path),
+    }
+    collect_task = asyncio.create_task(_collect_bg_output(task_id, proc))
+
+    # Wait for quick commands to finish inline
+    wait = min(max(wait, 0), 30)
+    if wait > 0:
+        try:
+            await asyncio.wait_for(asyncio.shield(collect_task), timeout=wait)
+        except asyncio.TimeoutError:
+            pass
+
+    task = _bg_tasks.get(task_id)
+    output = task["output"].decode(errors="replace") if task else ""
+    output = _truncate_output(output, max_chars=CHAT_TOOL_COMMAND_MAX_CHARS)
+    done = task.get("done", False) if task else True
+    exit_code = proc.returncode
+
+    if done:
+        status = f"exited (code {exit_code})"
+    else:
+        status = "running"
+
+    return (
+        f"Task {task_id}: {status}\n"
+        f"Command: {command}\n"
+        f"---\n{output}"
+    )
 
 
 async def check_task(task_id: str, *, workspace: str) -> str:
@@ -730,6 +798,38 @@ async def kill_task(task_id: str, *, workspace: str) -> str:
         pass
     _bg_tasks.pop(task_id, None)
     return f"Killed task {task_id}"
+
+
+async def send_input(task_id: str, input: str, *, workspace: str) -> str:
+    """Send input to a running task's stdin. Use for interactive prompts, REPLs, or control characters.
+    :param task_id: The task ID returned by run_command.
+    :param input: Text to send. Use \\n for Enter, \\x03 for Ctrl-C, \\x04 for Ctrl-D.
+    """
+    task = _bg_tasks.get(task_id)
+    if not task:
+        available = list(_bg_tasks.keys())
+        return f"Error: no task '{task_id}'. Active: {available or 'none'}"
+
+    proc = task["proc"]
+    if proc.returncode is not None:
+        return f"Error: task {task_id} already exited (code {proc.returncode})"
+
+    if proc.stdin is None:
+        return f"Error: task {task_id} has no stdin"
+
+    # LLMs emit literal "\n" — convert to real characters
+    try:
+        text = input.encode("raw_unicode_escape").decode("unicode_escape")
+    except (UnicodeDecodeError, ValueError):
+        text = input
+
+    try:
+        proc.stdin.write(text.encode())
+        await proc.stdin.drain()
+    except (BrokenPipeError, ConnectionResetError, OSError):
+        return f"Error: stdin closed for task {task_id}"
+
+    return f"Sent {len(text)} bytes to task {task_id}"
 
 
 async def web_search(query: str, *, workspace: str) -> str:
@@ -1191,6 +1291,7 @@ TOOLS: dict[str, dict] = {
     "multi_edit_file": {"fn": multi_edit_file, "auto": False},
     "write_file": {"fn": write_file, "auto": False},
     "run_command": {"fn": run_command, "auto": False},
+    "send_input": {"fn": send_input, "auto": False},
     "kill_task": {"fn": kill_task, "auto": False},
     "create_automation": {"fn": create_automation, "auto": False},
     "update_automation": {"fn": update_automation, "auto": False},
