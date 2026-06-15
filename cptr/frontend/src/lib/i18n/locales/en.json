@@ -74,6 +74,9 @@
 	"files.showHidden": "Show dotfiles",
 	"files.hideHidden": "Hide dotfiles",
 	"files.failedToLoad": "Failed to load directory",
+	"files.openFolder": "Open folder",
+	"files.expand": "Expand",
+	"files.collapse": "Collapse",
 
 	"quickOpen.searchFiles": "Search files...",
 	"quickOpen.noFiles": "No files found",

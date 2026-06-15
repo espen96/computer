@@ -39,6 +39,7 @@
 	let initialLoad = $state(true);
 	let fetchTimer: ReturnType<typeof setTimeout> | null = null;
 	let fetching = false;
+	let dragExpandTimer: ReturnType<typeof setTimeout> | null = null;
 	let error = $state<string | null>(null);
 	let searchQuery = $state('');
 	let dragOverDir = $state<string | null>(null);
@@ -281,7 +282,8 @@
 		selectedPaths = new Set();
 		lastClickedIndex = index;
 		if (entry.type === 'directory') {
-			toggleDir(entry.path);
+			// Navigate into the folder
+			setFileBrowserCwd(entry.path);
 		} else {
 			openFileTab(entry.path);
 		}
@@ -398,34 +400,113 @@
 	}
 
 	// ── Drag to move ────────────────────────────────────────────
+
+	/** Collect all paths being dragged: either selected items (if the dragged item is selected) or just the single item */
+	function getDraggedPaths(entry: TreeEntry): string[] {
+		if (selectedPaths.size > 0 && selectedPaths.has(entry.path)) {
+			return [...selectedPaths];
+		}
+		return [entry.path];
+	}
+
 	function onDragStart(e: DragEvent, entry: TreeEntry) {
+		const paths = getDraggedPaths(entry);
 		draggedItem = entry.path;
-		e.dataTransfer?.setData('text/plain', entry.path);
+		e.dataTransfer?.setData('text/plain', paths.join('\n'));
+		e.dataTransfer?.setData('application/x-filebrowser-paths', JSON.stringify(paths));
 		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
 	}
 
+	/** For a given entry, find the drop-target directory.
+	 *  - If the entry IS a directory, target it directly.
+	 *  - Otherwise, find its nearest parent expanded directory.
+	 *  Returns null if the entry is a root-level file (parent === cwd). */
+	function resolveDropTarget(entry: TreeEntry): string | null {
+		if (entry.type === 'directory') return entry.path;
+		// Walk up to find the nearest expanded parent
+		const parentDir = entry.path.substring(0, entry.path.lastIndexOf('/'));
+		const cwdNorm = cwd.replace(/\/$/, '');
+		if (parentDir === cwdNorm || parentDir === cwd) return null; // root-level file, no folder highlight
+		// The parent must be expanded (otherwise the entry wouldn't be visible)
+		if (expandedDirs.has(parentDir)) return parentDir;
+		return null;
+	}
+
 	function onDragOverDir(e: DragEvent, entry: TreeEntry) {
-		if (entry.type !== 'directory') return;
+		// Determine the target folder for this entry
+		let targetDir: string | null;
+		if (entry.type === 'directory') {
+			targetDir = entry.path;
+		} else {
+			// Non-directory: target the nearest parent expanded folder
+			targetDir = resolveDropTarget(entry);
+			if (!targetDir) return; // root-level file, let the container dropzone handle it
+		}
+
+		// Don't allow dropping onto self or a child of a dragged dir
+		if (draggedItem && (targetDir === draggedItem || targetDir.startsWith(draggedItem + '/'))) return;
 		e.preventDefault();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-		dragOverDir = entry.path;
+
+		if (dragOverDir !== targetDir) {
+			dragOverDir = targetDir;
+			// Auto-expand directory after hovering for 600ms (only for actual directories)
+			if (dragExpandTimer) clearTimeout(dragExpandTimer);
+			if (entry.type === 'directory') {
+				dragExpandTimer = setTimeout(() => {
+					if (dragOverDir === targetDir && !expandedDirs.has(targetDir!)) {
+						toggleDir(targetDir!);
+					}
+					dragExpandTimer = null;
+				}, 600);
+			}
+		}
 	}
 
 	function onDragLeaveDir() {
+		if (dragExpandTimer) { clearTimeout(dragExpandTimer); dragExpandTimer = null; }
 		dragOverDir = null;
+	}
+
+	/** Move one or more paths into a target directory */
+	async function moveItemsToDir(paths: string[], targetDir: string) {
+		for (const src of paths) {
+			// Skip if trying to move into itself or a parent path
+			if (src === targetDir || targetDir.startsWith(src + '/')) continue;
+			// Skip if already in that directory
+			const parentDir = src.substring(0, src.lastIndexOf('/'));
+			if (parentDir === targetDir || parentDir === targetDir.replace(/\/$/, '')) continue;
+			try {
+				await moveFile(src, targetDir);
+			} catch {}
+		}
+		// Refresh current dir + any expanded parents
+		fetchDirectory(cwd);
+		for (const dir of expandedDirs) {
+			fetchSubdir(dir);
+		}
+		clearSelection();
 	}
 
 	async function onDropOnDir(e: DragEvent, entry: TreeEntry) {
 		e.preventDefault();
+		if (dragExpandTimer) { clearTimeout(dragExpandTimer); dragExpandTimer = null; }
 		dragOverDir = null;
 
-		// Handle file browser item drag
+		// Resolve actual target directory (entry itself if dir, or parent expanded dir)
+		const targetDir = resolveDropTarget(entry) ?? (entry.type === 'directory' ? entry.path : null);
+		if (!targetDir) return; // root-level file drop — container handles it
+
+		// Handle file browser item drag (single or multi)
 		if (draggedItem) {
-			try {
-				await moveFile(draggedItem, entry.path);
-				fetchDirectory(cwd);
-				refreshParentDir(draggedItem);
-			} catch {}
+			const rawPaths = e.dataTransfer?.getData('application/x-filebrowser-paths');
+			let paths: string[] = [];
+			if (rawPaths) {
+				try { paths = JSON.parse(rawPaths); } catch { paths = [draggedItem]; }
+			} else {
+				paths = [draggedItem];
+			}
+			await moveItemsToDir(paths, targetDir);
 			draggedItem = null;
 			return;
 		}
@@ -433,11 +514,12 @@
 		// Handle external file upload
 		const files = e.dataTransfer?.files;
 		if (files && files.length) {
-			await uploadFiles(files, entry.path);
+			await uploadFiles(files, targetDir);
 		}
 	}
 
 	function onDragEnd() {
+		if (dragExpandTimer) { clearTimeout(dragExpandTimer); dragExpandTimer = null; }
 		draggedItem = null;
 		dragOverDir = null;
 		dragOverBreadcrumb = null;
@@ -459,18 +541,25 @@
 		e.preventDefault();
 		dragOverBreadcrumb = null;
 		if (!draggedItem) return;
-		try {
-			await moveFile(draggedItem, path);
-			fetchDirectory(cwd);
-		} catch {}
+		const rawPaths = e.dataTransfer?.getData('application/x-filebrowser-paths');
+		let paths: string[] = [];
+		if (rawPaths) {
+			try { paths = JSON.parse(rawPaths); } catch { paths = [draggedItem]; }
+		} else {
+			paths = [draggedItem];
+		}
+		await moveItemsToDir(paths, path);
 		draggedItem = null;
 	}
 
 	// ── Drop zone for uploads ───────────────────────────────────
 	function onDropzoneOver(e: DragEvent) {
-		// Only show dropzone for external files (not internal drags)
-		if (draggedItem) return;
 		e.preventDefault();
+		if (draggedItem) {
+			// Internal drag — allow drop to move to current directory
+			if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+			return;
+		}
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
 		dropzoneActive = true;
 	}
@@ -485,6 +574,21 @@
 	async function onDropzoneDrop(e: DragEvent) {
 		e.preventDefault();
 		dropzoneActive = false;
+
+		// Handle internal drag-and-drop to empty area (move to cwd)
+		if (draggedItem) {
+			const rawPaths = e.dataTransfer?.getData('application/x-filebrowser-paths');
+			let paths: string[] = [];
+			if (rawPaths) {
+				try { paths = JSON.parse(rawPaths); } catch { paths = [draggedItem]; }
+			} else {
+				paths = [draggedItem];
+			}
+			await moveItemsToDir(paths, cwd);
+			draggedItem = null;
+			return;
+		}
+
 		const files = e.dataTransfer?.files;
 		if (files && files.length) {
 			await uploadFiles(files, cwd);
@@ -805,13 +909,16 @@
 					</div>
 				{:else}
 					{@const isSelected = selectedPaths.has(entry.path)}
+					{@const isDragTarget = dragOverDir !== null && (entry.path === dragOverDir || entry.path.startsWith(dragOverDir + '/'))}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<button
 						class="group flex items-center gap-1 w-full h-7 rounded-lg text-left transition-colors duration-75
 							{isSelected
 							? 'bg-blue-50 dark:bg-blue-500/10'
-							: dragOverDir === entry.path
-								? 'bg-blue-100 dark:bg-blue-500/20'
+							: isDragTarget
+								? entry.path === dragOverDir
+									? 'bg-blue-100 dark:bg-blue-500/20'
+									: 'bg-blue-50/60 dark:bg-blue-500/8'
 								: 'hover:bg-gray-100 dark:hover:bg-white/4'}"
 						style="padding-left: {8 + entry.depth * 16}px; padding-right: 8px;"
 						onclick={(e) => handleClick(e, entry, i)}
@@ -824,8 +931,21 @@
 						ondragend={onDragEnd}
 					>
 						{#if entry.type === 'directory'}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<span
-								class="flex items-center justify-center w-4 shrink-0 text-gray-400 dark:text-gray-600"
+								class="flex items-center justify-center w-4 shrink-0 text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 cursor-pointer"
+								role="button"
+								tabindex="-1"
+								onclick={(e) => {
+									e.stopPropagation();
+									toggleDir(entry.path);
+								}}
+								onkeydown={(e) => {
+									if (e.key === 'Enter') {
+										e.stopPropagation();
+										toggleDir(entry.path);
+									}
+								}}
 							>
 								<Icon
 									name={expandedDirs.has(entry.path) ? 'chevron-down' : 'chevron-right'}
@@ -843,21 +963,9 @@
 							<Icon name={fileIconName(entry.name, entry.type)} size={14} strokeWidth={1.4} />
 						</span>
 						{#if entry.type === 'directory'}
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<span
-								class="flex-1 text-xs text-gray-800 dark:text-gray-200 truncate hover:underline cursor-pointer"
-								role="button"
-								tabindex="-1"
-								onclick={(e) => {
-									e.stopPropagation();
-									setFileBrowserCwd(entry.path);
-								}}
-								onkeydown={(e) => {
-									if (e.key === 'Enter') {
-										e.stopPropagation();
-										setFileBrowserCwd(entry.path);
-									}
-								}}>{entry.name}</span
+								class="flex-1 text-xs text-gray-800 dark:text-gray-200 truncate"
+								>{entry.name}</span
 							>
 						{:else}
 							<span class="flex-1 text-xs text-gray-800 dark:text-gray-200 truncate"
@@ -980,6 +1088,21 @@
 	<DropdownMenu
 		anchor={contextMenu.anchor ?? { x: contextMenu.x, y: contextMenu.y }}
 		items={[
+			...(contextMenu.entry.type === 'directory'
+				? [
+						{
+							label: $t('files.openFolder'),
+							icon: 'folder',
+							onclick: () => { setFileBrowserCwd(contextMenu!.entry.path); closeMenu(); }
+						},
+						{
+							label: expandedDirs.has(contextMenu.entry.path) ? $t('files.collapse') : $t('files.expand'),
+							icon: expandedDirs.has(contextMenu.entry.path) ? 'chevron-down' : 'chevron-right',
+							onclick: () => { toggleDir(contextMenu!.entry.path); closeMenu(); }
+						},
+						{ label: '', divider: true, onclick: () => {} }
+					]
+				: []),
 			{ label: $t('files.rename'), icon: 'pencil', onclick: () => startRename(contextMenu!.entry) },
 			...(contextMenu.entry.type !== 'directory'
 				? [
