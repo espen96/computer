@@ -14,17 +14,9 @@
 
 <sub>See more at [cptr.sh](https://cptr.sh/)</sub>
 
-The computer used to be a room. Then a desk. Then a bag. Now it's a URL.
+`cptr` runs on your machine and serves your whole computer (files, terminal, editor, git) to any browser. 
 
-Your phone goes everywhere with you. You run your life from it. Your computer used to stay home. Now it can come along.
-
-`cptr` (short for "computer") runs on your machine and puts the whole thing in a browser tab. Pull out your phone and you're in. Files, editor, terminal, git, running on the computer you already own.
-
-Push a hotfix from the train. Check on a deploy from bed. Ship a side project from the park. Stage and commit without touching the command line, or open the terminal and do it the old way. Search across files. Preview markdown. Drag things around. Switch between projects without losing your place.
-
-Close the tab. Come back tomorrow on any device. Everything is where you left it. Sessions survive disconnects. Your work doesn't care which screen you're on.
-
-Life is short. Touch grass.
+Phone, tablet, laptop, another computer, even the one it's running on. Designed to feel native on every screen. Plug in an AI that can actually read, write, and run things on your machine, or bring your favourite terminal agent. Terminal multiplexer, coding agent, full workstation, one tool, any device.
 
 ## Install
 
@@ -126,6 +118,18 @@ cptr exposes an OpenAI-compatible API (`/v1/chat/completions`). Any client that 
 **Your machine.** cptr serves the machine it runs on. The local filesystem, the local shell, local state. Where that machine lives is up to you.
 
 **Computer, not chat.** The core is the filesystem, the terminal, and git. Files over apps. Plain files on your machine, not content trapped inside another product. AI conversations are files too: searchable, editable, movable, commit-able. cptr is a window into the real system, not a container on top of it.
+
+The computer used to be a room. Then a desk. Then a bag. Now it's a URL.
+
+Your phone goes everywhere with you. You run your life from it. Your computer used to stay home. Now it can come along.
+
+`cptr` (short for "computer") runs on your machine and puts the whole thing in a browser tab. Pull out your phone and you're in. Files, editor, terminal, git, running on the computer you already own.
+
+Push a hotfix from the train. Check on a deploy from bed. Ship a side project from the park. Stage and commit without touching the command line, or open the terminal and do it the old way. Search across files. Preview markdown. Drag things around. Switch between projects without losing your place.
+
+Close the tab. Come back tomorrow on any device. Everything is where you left it. Sessions survive disconnects. Your work doesn't care which screen you're on.
+
+Life is short. Touch grass.
 
 Read our [Manifesto](MANIFESTO.md).
 
