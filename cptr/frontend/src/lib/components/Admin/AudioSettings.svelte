@@ -26,6 +26,7 @@
 	let ttsFormat = $state('mp3');
 	let hasExistingTtsKey = $state(false);
 	let voiceModeSystemPrompt = $state('');
+	let voiceModeSttMode = $state<'browser' | 'provider'>('browser');
 	const VOICE_MODE_SYSTEM_PROMPT_PLACEHOLDER =
 		'You are in voice mode. Keep responses brief, conversational, and easy to hear aloud. Prefer one or two short paragraphs. Ask at most one focused follow-up question when needed. Avoid long lists, code blocks, tables, and verbose explanations unless the user explicitly asks.';
 
@@ -47,6 +48,8 @@
 			ttsFormat = (config['audio.tts_format'] as string) || 'mp3';
 			hasExistingTtsKey = !!config['audio.tts_api_key'];
 			voiceModeSystemPrompt = (config['audio.voice_mode_system_prompt'] as string) || '';
+			voiceModeSttMode =
+				config['audio.voice_mode_stt_mode'] === 'provider' ? 'provider' : 'browser';
 		} catch {}
 		loading = false;
 	});
@@ -65,7 +68,8 @@
 				'audio.tts_model': ttsModel,
 				'audio.tts_voice': ttsVoice,
 				'audio.tts_format': ttsFormat,
-				'audio.voice_mode_system_prompt': voiceModeSystemPrompt
+				'audio.voice_mode_system_prompt': voiceModeSystemPrompt,
+				'audio.voice_mode_stt_mode': voiceModeSttMode
 			};
 			if (sttApiKey) {
 				cfg['audio.stt_api_key'] = sttApiKey;
@@ -241,6 +245,19 @@
 		<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">{$t('admin.audio.voiceMode')}</h3>
 
 		<div class="flex flex-col gap-2.5">
+			<div class="flex items-center justify-between">
+				<span class="text-xs text-gray-600 dark:text-gray-400">{$t('admin.audio.voiceModeSttMode')}</span>
+				<select
+					bind:value={voiceModeSttMode}
+					class="bg-transparent text-xs text-gray-600 dark:text-gray-400 outline-none cursor-pointer"
+				>
+					<option value="browser">{$t('admin.audio.voiceModeSttBrowser')}</option>
+					<option value="provider">{$t('admin.audio.voiceModeSttProvider')}</option>
+				</select>
+			</div>
+			<p class="text-[11px] text-gray-400 dark:text-gray-600 -mt-1">
+				{voiceModeSttMode === 'browser' ? $t('admin.audio.voiceModeBrowserSttHint') : $t('admin.audio.voiceModeProviderSttHint')}
+			</p>
 			<div>
 				<label class="text-xs text-gray-600 dark:text-gray-400" for="voice-mode-system-prompt">
 					{$t('admin.audio.voiceModeSystemPrompt')}

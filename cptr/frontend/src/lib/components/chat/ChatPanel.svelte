@@ -80,6 +80,9 @@
 	let ttsErrorShown = false;
 	let speakingMessageId = $state<string | null>(null);
 	let ttsStopRequested = false;
+	// This browser memory cache only helps while the current page is open, such as when
+	// someone taps the same speak button twice. The backend cache is the durable source
+	// for cross-session reuse and the workspace data flywheel.
 	let ttsAudioCacheBytes = 0;
 	const ttsAudioCache = new Map<string, Blob>();
 	const TTS_AUDIO_CACHE_LIMIT_BYTES = 20 * 1024 * 1024;

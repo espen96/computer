@@ -14,6 +14,7 @@ export const QUALITY_BITRATES: Record<RecordingQuality, number> = {
 
 export const voiceMemosEnabled = writable<boolean>(false);
 export const transcribeEnabled = writable<boolean>(true);
+export const sttConfigured = writable<boolean>(false);
 export const recordingQuality = writable<RecordingQuality>('high');
 export const showVoiceMemo = writable<boolean>(false);
 export const ttsEnabled = writable<boolean>(false);
@@ -21,6 +22,7 @@ export const ttsConfigured = writable<boolean>(false);
 export const ttsVoice = writable<string>('alloy');
 export const ttsFormat = writable<string>('mp3');
 export const voiceModeEnabled = writable<boolean>(false);
+export const voiceModeSttMode = writable<'browser' | 'provider'>('browser');
 export const ttsPlaybackEnabled = writable<boolean>(
 	typeof localStorage !== 'undefined' ? localStorage.getItem('ttsPlaybackEnabled') === 'true' : false
 );
@@ -34,14 +36,17 @@ export async function refreshAudioState() {
 		const data = await fetchJSON<{
 			voice_memos_enabled: boolean;
 			transcribe_enabled: boolean;
+			stt_configured: boolean;
 			recording_quality: string;
 			tts_enabled: boolean;
 			tts_configured: boolean;
 			tts_voice: string;
 			tts_format: string;
+			voice_mode_stt_mode?: string;
 		}>('/api/audio/state');
 		voiceMemosEnabled.set(data.voice_memos_enabled === true);
 		transcribeEnabled.set(data.transcribe_enabled !== false);
+		sttConfigured.set(data.stt_configured === true);
 		const q = data.recording_quality;
 		if (q === 'medium' || q === 'low') recordingQuality.set(q);
 		else recordingQuality.set('high');
@@ -49,9 +54,12 @@ export async function refreshAudioState() {
 		ttsConfigured.set(data.tts_configured === true);
 		ttsVoice.set(data.tts_voice || 'alloy');
 		ttsFormat.set(data.tts_format || 'mp3');
+		voiceModeSttMode.set(data.voice_mode_stt_mode === 'provider' ? 'provider' : 'browser');
 	} catch {
 		voiceMemosEnabled.set(false);
+		sttConfigured.set(false);
 		ttsEnabled.set(false);
 		ttsConfigured.set(false);
+		voiceModeSttMode.set('browser');
 	}
 }

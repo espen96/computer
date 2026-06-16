@@ -22,7 +22,13 @@
 	import QueuedMessageItem from './QueuedMessageItem.svelte';
 	import Icon from '../Icon.svelte';
 	import { planMode } from '$lib/stores';
-	import { ttsConfigured, ttsEnabled, voiceModeEnabled } from '$lib/stores/audio';
+	import {
+		sttConfigured,
+		ttsConfigured,
+		ttsEnabled,
+		voiceModeEnabled,
+		voiceModeSttMode
+	} from '$lib/stores/audio';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import { t } from '$lib/i18n';
 
@@ -64,7 +70,13 @@
 	let voiceRestartTimer = 0;
 	let voiceStopRequested = false;
 	let voiceRearming = $state(false);
-	const voiceModeAvailable = $derived($ttsEnabled && $ttsConfigured);
+	let voiceCaptureRecorder: MediaRecorder | null = null;
+	let voiceCaptureStream: MediaStream | null = null;
+	let voiceCaptureChunks: Blob[] = [];
+	let voiceCaptureMimeType = 'audio/webm';
+	const voiceModeAvailable = $derived(
+		$ttsEnabled && $ttsConfigured && ($voiceModeSttMode === 'browser' || $sttConfigured)
+	);
 	const voiceStatusLabel = $derived(
 		voiceWaitingForResponse || streaming || sending
 			? $t('chat.voiceWaiting')
@@ -576,10 +588,108 @@
 		const recognition = voiceRecognition;
 		voiceRecognition = null;
 		voiceStopRequested = true;
+		stopVoiceCapture();
 		try {
 			recognition?.stop();
 		} catch {}
 		voiceListening = false;
+	}
+
+	function chooseVoiceCaptureMimeType() {
+		if (typeof MediaRecorder === 'undefined') return 'audio/webm';
+		if (MediaRecorder.isTypeSupported?.('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus';
+		if (MediaRecorder.isTypeSupported?.('audio/webm')) return 'audio/webm';
+		if (MediaRecorder.isTypeSupported?.('audio/mp4')) return 'audio/mp4';
+		return '';
+	}
+
+	async function startVoiceCapture() {
+		if (!workspace || voiceCaptureRecorder || typeof MediaRecorder === 'undefined') return;
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			if (!voiceRecognition || !voiceListening) {
+				stream.getTracks().forEach((track) => track.stop());
+				return;
+			}
+			const mimeType = chooseVoiceCaptureMimeType();
+			const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+			voiceCaptureStream = stream;
+			voiceCaptureRecorder = recorder;
+			voiceCaptureChunks = [];
+			voiceCaptureMimeType = recorder.mimeType || mimeType || 'audio/webm';
+			recorder.ondataavailable = (event) => {
+				if (event.data.size > 0) voiceCaptureChunks.push(event.data);
+			};
+			recorder.start();
+		} catch {
+			voiceCaptureRecorder = null;
+			voiceCaptureStream = null;
+			voiceCaptureChunks = [];
+		}
+	}
+
+	async function stopVoiceCapture(): Promise<{ blob: Blob; filename: string; contentType: string } | null> {
+		const recorder = voiceCaptureRecorder;
+		const stream = voiceCaptureStream;
+		const chunks = voiceCaptureChunks;
+		const contentType = voiceCaptureMimeType || 'audio/webm';
+		voiceCaptureRecorder = null;
+		voiceCaptureStream = null;
+		voiceCaptureChunks = [];
+
+		if (!recorder) {
+			stream?.getTracks().forEach((track) => track.stop());
+			return null;
+		}
+
+		await new Promise<void>((resolve) => {
+			recorder.onstop = () => resolve();
+			try {
+				if (recorder.state !== 'inactive') recorder.stop();
+				else resolve();
+			} catch {
+				resolve();
+			}
+		});
+		stream?.getTracks().forEach((track) => track.stop());
+		if (!chunks.length) return null;
+		const ext = contentType.includes('mp4') ? 'm4a' : 'webm';
+		return {
+			blob: new Blob(chunks, { type: contentType }),
+			filename: `voice-mode.${ext}`,
+			contentType
+		};
+	}
+
+	async function saveVoiceModeSttCapture(
+		capture: { blob: Blob; filename: string; contentType: string },
+		text: string
+	) {
+		// Browser STT does not need provider transcription, but the captured audio still
+		// matters. Sending audio plus transcript through the normal transcribe route keeps
+		// browser and provider voice samples in one STT cache for the data flywheel.
+		if (!workspace || !text.trim()) return;
+		const form = new FormData();
+		form.append('file', capture.blob, capture.filename);
+		form.append('text', text.trim());
+		form.append('workspace', workspace);
+		form.append('source', 'voice_mode');
+		form.append('language', navigator.language || 'en-US');
+		try {
+			await fetch('/api/audio/transcribe', { method: 'POST', body: form });
+		} catch {}
+	}
+
+	async function transcribeVoiceModeCapture(
+		capture: { blob: Blob; filename: string; contentType: string }
+	): Promise<string> {
+		const form = new FormData();
+		form.append('file', capture.blob, capture.filename);
+		form.append('workspace', workspace);
+		const res = await fetch('/api/audio/transcribe', { method: 'POST', body: form });
+		if (!res.ok) throw new Error('transcription failed');
+		const data = await res.json();
+		return (data?.text || '').trim();
 	}
 
 	function startVoiceRecognition() {
@@ -615,17 +725,34 @@
 		recognition.lang = navigator.language || 'en-US';
 
 		recognition.onresult = async (event: any) => {
-			let text = '';
+			let browserText = '';
 			for (let i = event.resultIndex; i < event.results.length; i++) {
 				const result = event.results[i];
-				if (result?.isFinal) text += ` ${result[0]?.transcript || ''}`;
+				if (result?.isFinal) browserText += ` ${result[0]?.transcript || ''}`;
 			}
-			text = text.trim();
-			if (!text) return;
-			inputText = text;
+			browserText = browserText.trim();
+			if (!browserText) return;
 			voiceWaitingForResponse = true;
 			voiceSawStreaming = false;
+			const capturePromise = stopVoiceCapture();
 			stopVoiceRecognition();
+			const capture = await capturePromise;
+			let text = browserText;
+			if ($voiceModeSttMode === 'provider' && capture) {
+				try {
+					text = (await transcribeVoiceModeCapture(capture)) || browserText;
+				} catch {
+					text = browserText;
+				}
+			} else if (capture) {
+				void saveVoiceModeSttCapture(capture, browserText);
+			}
+			if (!text.trim()) {
+				voiceWaitingForResponse = false;
+				scheduleVoiceRestart(500);
+				return;
+			}
+			inputText = text;
 			await tick();
 			onsend();
 		};
@@ -642,6 +769,7 @@
 			if (voiceRecognition !== recognition) return;
 			voiceRecognition = null;
 			voiceListening = false;
+			stopVoiceCapture();
 			if (!voiceStopRequested) scheduleVoiceRestart(1200);
 			voiceStopRequested = false;
 		};
@@ -650,6 +778,7 @@
 			recognition.start();
 			voiceListening = true;
 			voiceRearming = false;
+			void startVoiceCapture();
 		} catch {
 			voiceRecognition = null;
 			voiceListening = false;
