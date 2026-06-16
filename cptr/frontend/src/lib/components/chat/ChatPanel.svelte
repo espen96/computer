@@ -362,7 +362,20 @@
 			const existing = msg.output || [];
 			const callId = data.output.call_id;
 			const itemType = data.output.type;
-			if (callId && itemType) {
+
+			if (itemType === 'reasoning') {
+				// Responses-style reasoning items stream as output item updates.
+				const itemId = data.output.id;
+				const existingIdx = itemId
+					? existing.findIndex((o: any) => o.type === 'reasoning' && o.id === itemId)
+					: existing.findIndex((o: any) => o.type === 'reasoning');
+				if (existingIdx >= 0) {
+					existing[existingIdx] = data.output;
+					msg.output = [...existing];
+				} else {
+					msg.output = [...existing, data.output];
+				}
+			} else if (callId && itemType) {
 				const existingIdx = existing.findIndex(
 					(o: any) => o.type === itemType && o.call_id === callId
 				);
@@ -559,7 +572,11 @@
 						workspace,
 						chatId,
 						parentId,
-						{ tool_approval_mode: mode, plan_mode: get(planMode), request_params: get(requestParams) },
+						{
+							tool_approval_mode: mode,
+							plan_mode: get(planMode),
+							request_params: get(requestParams)
+						},
 						undefined,
 						files
 					);
@@ -829,7 +846,11 @@
 					workspace,
 					chatId,
 					msg.parent_id,
-					{ tool_approval_mode: get(toolApprovalMode), plan_mode: get(planMode), request_params: get(requestParams) }
+					{
+						tool_approval_mode: get(toolApprovalMode),
+						plan_mode: get(planMode),
+						request_params: get(requestParams)
+					}
 				);
 				if (result.user_message && result.assistant_message) {
 					allMessages = [...allMessages, result.user_message, result.assistant_message];
@@ -873,7 +894,11 @@
 	{#if isLanding}
 		<!-- Landing: input + recent chats -->
 		<div class="flex-1 overflow-y-auto flex flex-col">
-			<div class="max-w-xl w-full mx-auto px-4 flex flex-col my-auto pt-6 {previousChats.length === 0 ? 'pb-20' : 'pb-6'}">
+			<div
+				class="max-w-xl w-full mx-auto px-4 flex flex-col my-auto pt-6 {previousChats.length === 0
+					? 'pb-20'
+					: 'pb-6'}"
+			>
 				<!-- Greeting -->
 				<div class="mb-8 text-center">
 					<h1 class="text-lg font-normal text-gray-800 dark:text-gray-200 tracking-tight">
@@ -911,9 +936,9 @@
 	{:else}
 		<!-- Conversation view -->
 		{#if loading}
-		<div class="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500">
-			<Spinner size={24} />
-		</div>
+			<div class="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500">
+				<Spinner size={24} />
+			</div>
 		{:else}
 			<div bind:this={messagesEl} class="flex-1 overflow-y-auto" onscroll={handleMessagesScroll}>
 				<div class="max-w-2xl mx-auto px-4 pt-4 pb-16 flex flex-col gap-4">

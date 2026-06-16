@@ -676,6 +676,7 @@
 
 	"chat.edit.text": "Text",
 	"chat.edit.thought": "Thought",
+	"chat.thinking": "Thinking",
 	"chat.edit.tool": "Tool",
 	"chat.edit.item": "Item",
 

@@ -196,11 +196,12 @@
 	}
 
 	// ── Consecutive grouping logic ────────────────────────────────
-	// Groups consecutive function_call items together, breaking on message items.
+	// Groups consecutive function_call and reasoning items together, breaking on message items.
 
 	interface ToolGroup {
 		type: 'tool_group';
 		calls: any[]; // function_call items
+		reasoning: any[]; // reasoning items
 		outputs: Map<string, any>; // call_id → function_call_output
 	}
 
@@ -214,12 +215,7 @@
 		item: any;
 	}
 
-	interface ReasoningItem {
-		type: 'reasoning_item';
-		item: any;
-	}
-
-	type DisplayItem = ToolGroup | MessageItem | ArtifactItem | ReasoningItem;
+	type DisplayItem = ToolGroup | MessageItem | ArtifactItem;
 
 	const outputText = $derived.by((): string => {
 		return (output || [])
@@ -249,8 +245,14 @@
 			}
 		}
 
+		const ensureGroup = () => {
+			if (!currentGroup) {
+				currentGroup = { type: 'tool_group', calls: [], reasoning: [], outputs: outputMap };
+			}
+		};
+
 		const flushGroup = () => {
-			if (currentGroup && currentGroup.calls.length > 0) {
+			if (currentGroup && (currentGroup.calls.length > 0 || currentGroup.reasoning.length > 0)) {
 				items.push(currentGroup);
 				currentGroup = null;
 			}
@@ -258,19 +260,17 @@
 
 		for (const item of output) {
 			if (item.type === 'function_call') {
-				if (!currentGroup) {
-					currentGroup = { type: 'tool_group', calls: [], outputs: outputMap };
-				}
-				currentGroup.calls.push(item);
+				ensureGroup();
+				currentGroup!.calls.push(item);
+			} else if (item.type === 'reasoning') {
+				ensureGroup();
+				currentGroup!.reasoning.push(item);
 			} else if (item.type === 'message') {
 				flushGroup();
 				items.push({ type: 'message_item', item });
 			} else if (item.type === 'artifact') {
 				flushGroup();
 				items.push({ type: 'artifact_item', item });
-			} else if (item.type === 'reasoning') {
-				// Don't flush group — reasoning precedes tool calls
-				items.push({ type: 'reasoning_item', item });
 			}
 			// function_call_output items are handled via outputMap, skip standalone render
 		}
@@ -384,44 +384,6 @@
 						<MarkdownRenderer
 							content={displayItem.item.content?.map((c: any) => c.text).join('') || ''}
 						/>
-					{:else if displayItem.type === 'reasoning_item'}
-						{@const reasoningText = (displayItem.item.summary ?? displayItem.item.content ?? [])
-							.filter((p) => 'text' in p)
-							.map((p) => p.text ?? '')
-							.join('')}
-						{#if reasoningText}
-							<div class="w-full min-w-0 flex flex-col my-0.5">
-								<button
-									class="w-full min-w-0 text-left text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition cursor-pointer"
-									aria-label={$t('chat.edit.thought')}
-									aria-expanded={expandedGroups.has(groupIdx)}
-									onclick={() => toggleGroupExpanded(groupIdx)}
-								>
-									<div class="flex items-center gap-1.5 text-sm min-w-0">
-										<div class="text-gray-400 dark:text-gray-500">
-											<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" class="size-3.5">
-												<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
-											</svg>
-										</div>
-										<div class="flex-1 min-w-0 line-clamp-1">
-											<span class="text-gray-600 dark:text-gray-300">{$t('chat.edit.thought')}</span>
-										</div>
-										<div class="flex shrink-0 self-center text-gray-400 dark:text-gray-500">
-											<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3.5" stroke="currentColor" class="size-3 transition-transform duration-200 {expandedGroups.has(groupIdx) ? 'rotate-180' : ''}">
-												<path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-											</svg>
-										</div>
-									</div>
-								</button>
-								{#if expandedGroups.has(groupIdx)}
-									<div transition:slide={{ duration: 300, easing: quintOut, axis: 'y' }}>
-										<div class="mt-1 mb-0.5 px-1">
-											<div class="text-sm text-gray-500 dark:text-gray-400 whitespace-pre-wrap">{reasoningText}</div>
-										</div>
-									</div>
-								{/if}
-							</div>
-						{/if}
 					{:else if displayItem.type === 'artifact_item'}
 						{@const artifact = displayItem.item}
 						{@const preview = (artifact.content || '')
@@ -458,12 +420,19 @@
 						</button>
 					{:else if displayItem.type === 'tool_group'}
 						{@const calls = displayItem.calls}
+						{@const reasoning = displayItem.reasoning}
 						{@const outputs = displayItem.outputs}
-						{@const hasPending = groupHasPending(calls)}
-						{@const allDone = groupAllDone(calls)}
-						{@const hasRejected = groupHasRejected(calls)}
+						{@const isReasoningOnly = calls.length === 0 && reasoning.length > 0}
+						{@const hasPending = isReasoningOnly ? !done : groupHasPending(calls)}
+						{@const allDone = isReasoningOnly ? done : groupAllDone(calls)}
+						{@const hasRejected = isReasoningOnly ? false : groupHasRejected(calls)}
 						{@const isGroupOpen = expandedGroups.has(groupIdx)}
 						{@const hasPendingApproval = calls.some((c: any) => c.status === 'pending')}
+						{@const reasoningText = reasoning
+							.flatMap((ri: any) => ri.summary ?? ri.content ?? [])
+							.filter((p: any) => 'text' in p)
+							.map((p: any) => p.text ?? '')
+							.join('')}
 
 						<div class="w-full min-w-0 flex flex-col my-0.5">
 							<!-- Group header -->
@@ -477,7 +446,13 @@
 									class="flex items-center gap-1.5 text-sm min-w-0 {hasPending ? 'shimmer' : ''}"
 								>
 									<!-- Status icon -->
-									{#if hasPending}
+									{#if isReasoningOnly}
+										<div class="text-gray-400 dark:text-gray-500">
+											<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" class="size-3.5">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0 3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+											</svg>
+										</div>
+									{:else if hasPending}
 										<div class="flex justify-center text-center">
 											<svg
 												aria-hidden="true"
@@ -509,66 +484,37 @@
 										</div>
 									{:else if allDone}
 										<div class="text-emerald-500 dark:text-emerald-400">
-											<svg
-												xmlns="http://www.w3.org/2000/svg"
-												fill="none"
-												viewBox="0 0 24 24"
-												stroke-width="2"
-												stroke="currentColor"
-												class="size-4"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-												/>
+											<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="size-4">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
 											</svg>
 										</div>
 									{:else if hasRejected}
 										<div class="text-red-400 dark:text-red-500">
-											<svg
-												xmlns="http://www.w3.org/2000/svg"
-												fill="none"
-												viewBox="0 0 24 24"
-												stroke-width="2.5"
-												stroke="currentColor"
-												class="size-4"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													d="M6 18L18 6M6 6l12 12"
-												/>
+											<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="size-4">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 											</svg>
 										</div>
 									{:else}
 										<div class="text-gray-400 dark:text-gray-500">
-											<svg
-												xmlns="http://www.w3.org/2000/svg"
-												fill="none"
-												viewBox="0 0 24 24"
-												stroke-width="1.75"
-												stroke="currentColor"
-												class="size-3.5"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													d="M21.75 6.75a4.5 4.5 0 0 1-4.884 4.484c-1.076-.091-2.264.071-2.95.904l-7.152 8.684a2.548 2.548 0 1 1-3.586-3.586l8.684-7.152c.833-.686.995-1.874.904-2.95a4.5 4.5 0 0 1 6.336-4.486l-3.276 3.276a3.004 3.004 0 0 0 2.25 2.25l3.276-3.276c.256.565.398 1.192.398 1.852Z"
-												/>
+											<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" class="size-3.5">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75a4.5 4.5 0 0 1-4.884 4.484c-1.076-.091-2.264.071-2.95.904l-7.152 8.684a2.548 2.548 0 1 1-3.586-3.586l8.684-7.152c.833-.686.995-1.874.904-2.95a4.5 4.5 0 0 1 6.336-4.486l-3.276 3.276a3.004 3.004 0 0 0 2.25 2.25l3.276-3.276c.256.565.398 1.192.398 1.852Z" />
 											</svg>
 										</div>
 									{/if}
 
 									<!-- Summary text -->
 									<div class="flex-1 min-w-0 line-clamp-1">
-										<span class="text-gray-600 dark:text-gray-300"
-											>{hasPending ? $t('chat.exploring') : $t('chat.explored')}</span
-										>
-										{#if groupSummaryText(calls)}
-											<span class="text-gray-400 dark:text-gray-500 ml-1"
-												>{groupSummaryText(calls)}</span
+										{#if isReasoningOnly}
+											<span class="text-gray-600 dark:text-gray-300">{done ? $t('chat.edit.thought') : $t('chat.thinking')}</span>
+										{:else}
+											<span class="text-gray-600 dark:text-gray-300"
+												>{hasPending ? $t('chat.exploring') : $t('chat.explored')}</span
 											>
+											{#if groupSummaryText(calls)}
+												<span class="text-gray-400 dark:text-gray-500 ml-1"
+													>{groupSummaryText(calls)}</span
+												>
+											{/if}
 										{/if}
 									</div>
 
@@ -598,7 +544,12 @@
 							{#if isGroupOpen}
 								<div transition:slide={{ duration: 300, easing: quintOut, axis: 'y' }}>
 									<div class="mb-0.5 space-y-0.5 mt-1">
-										{#each calls as item}
+										{#if reasoningText}
+									<div class="mb-1 px-1">
+										<div class="text-sm text-gray-500 dark:text-gray-400 whitespace-pre-wrap">{reasoningText}</div>
+									</div>
+								{/if}
+								{#each calls as item}
 											{@const args = item.arguments || {}}
 											{@const toolName = item.name}
 											{@const callId = item.call_id || toolName}
