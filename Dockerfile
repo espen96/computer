@@ -33,8 +33,10 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git tini && \
     rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash cptr
+# Create non-root user and writable data directory
+RUN useradd --create-home --shell /bin/bash cptr && \
+    mkdir -p /data && \
+    chown -R cptr:cptr /data
 USER cptr
 WORKDIR /home/cptr
 

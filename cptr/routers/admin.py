@@ -367,6 +367,11 @@ CONFIG_KEY_CHAT_MODELS = "chat.models"
 async def get_model_config(request: Request):
     """Get per-model config and full model list (including inactive) for the admin Models tab."""
     require_admin(request)
+    return await _build_model_config(request)
+
+
+async def _build_model_config(request: Request):
+    """Build model configuration response for the admin Models tab."""
     config = await Config.get(CONFIG_KEY_CHAT_MODELS) or {}
 
     # Build full model list from all enabled connections (same as chat.py
@@ -390,6 +395,14 @@ async def get_model_config(request: Request):
             )
 
     return {"config": config, "models": models}
+
+
+@router.post("/models/refresh")
+async def refresh_model_list(request: Request):
+    """Clear cached provider-discovered models and return the refreshed model list."""
+    require_admin(request)
+    invalidate_model_cache(request.app.state)
+    return await _build_model_config(request)
 
 
 class UpdateModelConfigRequest(BaseModel):

@@ -144,6 +144,8 @@ Then open the URL printed in the logs, usually `http://localhost:8000/?token=...
 
 `cptr` stores its state in `/data`. Mount your project into the container, like `-v "$PWD:/workspace"`, so cptr can access it.
 
+If you bind-mount a host directory to `/data`, make sure that directory is writable by the container user. SQLite needs to create and update `/data/app.db`, and host directory permissions take precedence over the image's built-in `/data` ownership.
+
 The `:dev` image is also available and tracks the `main` branch.
 
 ## Security model
