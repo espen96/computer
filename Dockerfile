@@ -26,16 +26,17 @@ RUN uv build --wheel --out-dir /dist
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS runtime
 
 LABEL org.opencontainers.image.source="https://github.com/open-webui/computer"
-LABEL org.opencontainers.image.description="cptr - your computer, from anywhere"
-LABEL org.opencontainers.image.licenses="BSL-1.1"
+LABEL org.opencontainers.image.description="cptr: your computer, from anywhere"
 
 # Runtime deps: git for git operations, tini for PID 1
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git tini && \
     rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash cptr
+# Create non-root user and writable data directory
+RUN useradd --create-home --shell /bin/bash cptr && \
+    mkdir -p /data && \
+    chown -R cptr:cptr /data
 USER cptr
 WORKDIR /home/cptr
 

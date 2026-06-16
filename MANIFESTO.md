@@ -1,5 +1,7 @@
 # Manifesto
 
+> **TL;DR** We pushed code and went to dinner. Prod broke. Phone in pocket, laptop at home. So we built `cptr` for ourselves. Your machine, in any browser. Files, terminal, editor, git, all of it. Phone, tablet, laptop, whatever. It literally is your computer. Now go outside.
+
 A developer moves to Portugal for the light. She works remotely for a company in New York. The commute is gone. The office is gone. Her apartment has a terrace with bougainvillea and a view of the Tagus. She sits at a desk in a dark room for eight hours and sees the river between pull requests.
 
 A father works from home. His daughter is three. He is present in the house for every hour she is awake. He is available for almost none of them. "Working from home" means a closed door, a lit screen, and a posture that says: not now. She learns early that he is home but not here. Remote work promised presence. It delivered proximity.

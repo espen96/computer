@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { slide } from 'svelte/transition';
-	import { quintOut } from 'svelte/easing';
 	import { get } from 'svelte/store';
 	import MarkdownRenderer from '$lib/components/markdown/MarkdownRenderer.svelte';
 	import OutputEditView from './OutputEditView.svelte';
+	import ConsecutiveActivityGroup from './ConsecutiveActivityGroup.svelte';
+	import ReasoningCollapsible from './ReasoningCollapsible.svelte';
+	import ToolCallCollapsible from './ToolCallCollapsible.svelte';
 	import { currentWorkspace, openFileTab } from '$lib/stores';
+	import { ttsConfigured, ttsEnabled } from '$lib/stores/audio';
+	import Icon from '../Icon.svelte';
 	import { t } from '$lib/i18n';
 
 	interface Props {
@@ -17,10 +20,12 @@
 		messageId: string;
 		siblingIndex?: number;
 		siblingTotal?: number;
+		speaking?: boolean;
 		onapprove: (messageId: string, callId: string, approved: boolean) => void;
 		onnavigate?: (direction: -1 | 1) => void;
 		onregenerate?: () => void;
 		onedit?: (content: string, output: any[] | null, submit: boolean) => void;
+		onspeak?: () => void;
 	}
 	let {
 		content,
@@ -31,10 +36,12 @@
 		messageId,
 		siblingIndex = 0,
 		siblingTotal = 1,
+		speaking = false,
 		onapprove,
 		onnavigate,
 		onregenerate,
-		onedit
+		onedit,
+		onspeak
 	}: Props = $props();
 
 	let edit = $state(false);
@@ -43,25 +50,6 @@
 	let copied = $state(false);
 	let showUsageTooltip = $state(false);
 	let textareaEl: HTMLTextAreaElement;
-
-	// Track which tool call outputs are expanded
-	let expandedCalls = $state<Set<string>>(new Set());
-	// Track which groups are expanded
-	let expandedGroups = $state<Set<number>>(new Set());
-
-	function toggleCallExpanded(callId: string) {
-		const next = new Set(expandedCalls);
-		if (next.has(callId)) next.delete(callId);
-		else next.add(callId);
-		expandedCalls = next;
-	}
-
-	function toggleGroupExpanded(groupIdx: number) {
-		const next = new Set(expandedGroups);
-		if (next.has(groupIdx)) next.delete(groupIdx);
-		else next.add(groupIdx);
-		expandedGroups = next;
-	}
 
 	async function startEdit() {
 		edit = true;
@@ -144,7 +132,11 @@
 		switch (name) {
 			case 'read_file': {
 				const p = shortPath(args.path);
-				if (args.start_line) return _t('chat.tool.readFileRange', { path: p, range: `${args.start_line}–${args.end_line || 'end'}` });
+				if (args.start_line)
+					return _t('chat.tool.readFileRange', {
+						path: p,
+						range: `${args.start_line}–${args.end_line || 'end'}`
+					});
 				return _t('chat.tool.readFile', { path: p });
 			}
 			case 'edit_file':
@@ -160,11 +152,15 @@
 					? _t('chat.tool.listDirectoryRecursive', { path: shortPath(args.path) })
 					: _t('chat.tool.listDirectory', { path: shortPath(args.path) });
 			case 'search_files': {
-				const scope = args.include ? _t('chat.tool.searchFilesScope', { include: args.include }) : '';
+				const scope = args.include
+					? _t('chat.tool.searchFilesScope', { include: args.include })
+					: '';
 				return _t('chat.tool.searchFiles', { query: args.query || '?', scope });
 			}
 			case 'run_command':
-				return args.background ? _t('chat.tool.backgroundCommand', { command: args.command || '?' }) : args.command || '?';
+				return args.background
+					? _t('chat.tool.backgroundCommand', { command: args.command || '?' })
+					: args.command || '?';
 			case 'check_task':
 				return _t('chat.tool.checkTask', { id: args.task_id || '?' });
 			case 'kill_task':
@@ -196,11 +192,13 @@
 	}
 
 	// ── Consecutive grouping logic ────────────────────────────────
-	// Groups consecutive function_call items together, breaking on message items.
+	// Groups consecutive assistant activity (reasoning + tool calls), breaking on message items.
 
-	interface ToolGroup {
-		type: 'tool_group';
+	interface ActivityGroup {
+		type: 'activity_group';
+		entries: any[]; // ordered reasoning/function_call items
 		calls: any[]; // function_call items
+		reasoning: any[];
 		outputs: Map<string, any>; // call_id → function_call_output
 	}
 
@@ -214,11 +212,12 @@
 		item: any;
 	}
 
-	type DisplayItem = ToolGroup | MessageItem | ArtifactItem;
+	type DisplayItem = ActivityGroup | MessageItem | ArtifactItem;
 
 	const outputText = $derived.by((): string => {
 		return (output || [])
 			.filter((i: any) => i.type === 'message')
+			.filter((i: any) => messageItemText(i).trim())
 			.flatMap((i: any) => i.content || [])
 			.map((c: any) => c.text || '')
 			.join('');
@@ -230,11 +229,15 @@
 		return content.startsWith(outputText) ? content.slice(outputText.length) : '';
 	});
 
+	function messageItemText(item: any): string {
+		return (item.content || []).map((c: any) => c.text || '').join('');
+	}
+
 	const displayItems = $derived.by((): DisplayItem[] => {
 		if (!output?.length) return [];
 
 		const items: DisplayItem[] = [];
-		let currentGroup: ToolGroup | null = null;
+		let currentGroup: ActivityGroup | null = null;
 
 		// Collect all function_call_output items for lookup
 		const outputMap = new Map<string, any>();
@@ -244,8 +247,20 @@
 			}
 		}
 
+		const ensureGroup = () => {
+			if (!currentGroup) {
+				currentGroup = {
+					type: 'activity_group',
+					entries: [],
+					calls: [],
+					reasoning: [],
+					outputs: outputMap
+				};
+			}
+		};
+
 		const flushGroup = () => {
-			if (currentGroup && currentGroup.calls.length > 0) {
+			if (currentGroup && (currentGroup.calls.length > 0 || currentGroup.reasoning.length > 0)) {
 				items.push(currentGroup);
 				currentGroup = null;
 			}
@@ -253,13 +268,20 @@
 
 		for (const item of output) {
 			if (item.type === 'function_call') {
-				if (!currentGroup) {
-					currentGroup = { type: 'tool_group', calls: [], outputs: outputMap };
-				}
-				currentGroup.calls.push(item);
+				ensureGroup();
+				currentGroup!.entries.push(item);
+				currentGroup!.calls.push(item);
+			} else if (item.type === 'reasoning') {
+				ensureGroup();
+				currentGroup!.entries.push(item);
+				currentGroup!.reasoning.push(item);
 			} else if (item.type === 'message') {
-				flushGroup();
-				items.push({ type: 'message_item', item });
+				// Some providers emit empty message shells between reasoning/tool items.
+				// Only visible assistant text should break a consecutive activity run.
+				if (messageItemText(item).trim()) {
+					flushGroup();
+					items.push({ type: 'message_item', item });
+				}
 			} else if (item.type === 'artifact') {
 				flushGroup();
 				items.push({ type: 'artifact_item', item });
@@ -270,35 +292,6 @@
 
 		return items;
 	});
-
-	/** Summary text for a tool group header */
-	function groupSummaryText(calls: any[]): string {
-		if (calls.length <= 3) {
-			// Show individual human-readable labels for small groups
-			return calls.map((c: any) => toolLabel(c.name || 'tool', c.arguments || {})).join(', ');
-		}
-		// For larger groups, show counts by tool type
-		const nameCounts: Record<string, number> = {};
-		for (const c of calls) {
-			const name = c.name || 'tool';
-			nameCounts[name] = (nameCounts[name] || 0) + 1;
-		}
-		return Object.entries(nameCounts)
-			.map(([name, count]) => (count > 1 ? `${count} ${name}` : name))
-			.join(', ');
-	}
-
-	function groupHasPending(calls: any[]): boolean {
-		return !done && calls.some((c: any) => c.status !== 'completed' && c.status !== 'rejected');
-	}
-
-	function groupAllDone(calls: any[]): boolean {
-		return calls.every((c: any) => c.status === 'completed');
-	}
-
-	function groupHasRejected(calls: any[]): boolean {
-		return calls.some((c: any) => c.status === 'rejected');
-	}
 
 	/** Format usage data for tooltip display */
 	function formatUsageLabel(key: string): string {
@@ -378,12 +371,9 @@
 						/>
 					{:else if displayItem.type === 'artifact_item'}
 						{@const artifact = displayItem.item}
-						{@const preview = (artifact.content || '')
-							.replace(/^#.*\n*/m, '')
-							.trim()
-							.slice(0, 200)}
+						{@const preview = (artifact.content || '').replace(/^#.*\n*/m, '').trim()}
 						<button
-							class="w-full text-left my-2 rounded-xl cursor-pointer
+							class="w-full min-w-0 overflow-hidden text-left my-2 rounded-xl cursor-pointer
 						border border-gray-200 dark:border-white/8
 						hover:border-gray-300 dark:hover:border-white/12
 						hover:bg-gray-50/50 dark:hover:bg-white/[0.03]
@@ -396,471 +386,51 @@
 								}
 							}}
 						>
-							<div class="flex items-center gap-2 px-3 pt-2.5 pb-0.5">
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									fill="none"
-									viewBox="0 0 24 24"
-									stroke-width="1.5"
-									stroke="currentColor"
-									class="size-3.5 shrink-0 text-gray-400 dark:text-gray-500"
-								>
-									<path
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
-									/>
-								</svg>
-								<span class="text-xs font-medium text-gray-800 dark:text-gray-100"
-									>{artifact.title || $t('chat.artifact')}</span
-								>
-							</div>
-							{#if preview}
-								<p
-									class="px-3 pb-2.5 text-[10px] text-gray-400 dark:text-gray-500 line-clamp-2 leading-relaxed"
-								>
-									{preview}{preview.length >= 200 ? '...' : ''}
-								</p>
-							{/if}
-						</button>
-					{:else if displayItem.type === 'tool_group'}
-						{@const calls = displayItem.calls}
-						{@const outputs = displayItem.outputs}
-						{@const hasPending = groupHasPending(calls)}
-						{@const allDone = groupAllDone(calls)}
-						{@const hasRejected = groupHasRejected(calls)}
-						{@const isGroupOpen = expandedGroups.has(groupIdx)}
-						{@const hasPendingApproval = calls.some((c: any) => c.status === 'pending')}
-
-						<div class="w-full min-w-0 flex flex-col my-0.5">
-							<!-- Group header -->
-							<button
-								class="w-full min-w-0 text-left text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition cursor-pointer"
-								aria-label={$t('chat.toggleToolCalls')}
-								aria-expanded={isGroupOpen}
-								onclick={() => toggleGroupExpanded(groupIdx)}
-							>
+							<div class="min-w-0 px-3 py-2.5">
 								<div
-									class="flex items-center gap-1.5 text-sm min-w-0 {hasPending ? 'shimmer' : ''}"
+									class="line-clamp-1 max-h-4 text-xs leading-4 font-medium text-gray-800 dark:text-gray-100 [overflow-wrap:anywhere]"
 								>
-									<!-- Status icon -->
-									{#if hasPending}
-										<div class="flex justify-center text-center">
-											<svg
-												aria-hidden="true"
-												class="size-4"
-												viewBox="0 0 24 24"
-												fill="currentColor"
-												xmlns="http://www.w3.org/2000/svg"
-											>
-												<style>
-													.spinner_tc {
-														transform-origin: center;
-														animation: spinner_tc_a 0.75s infinite linear;
-													}
-													@keyframes spinner_tc_a {
-														100% {
-															transform: rotate(360deg);
-														}
-													}
-												</style>
-												<path
-													d="M12,1A11,11,0,1,0,23,12,11,11,0,0,0,12,1Zm0,19a8,8,0,1,1,8-8A8,8,0,0,1,12,20Z"
-													opacity=".25"
-												/>
-												<path
-													d="M10.14,1.16a11,11,0,0,0-9,8.92A1.59,1.59,0,0,0,2.46,12,1.52,1.52,0,0,0,4.11,10.7a8,8,0,0,1,6.66-6.61A1.42,1.42,0,0,0,12,2.69h0A1.57,1.57,0,0,0,10.14,1.16Z"
-													class="spinner_tc"
-												/>
-											</svg>
-										</div>
-									{:else if allDone}
-										<div class="text-emerald-500 dark:text-emerald-400">
-											<svg
-												xmlns="http://www.w3.org/2000/svg"
-												fill="none"
-												viewBox="0 0 24 24"
-												stroke-width="2"
-												stroke="currentColor"
-												class="size-4"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-												/>
-											</svg>
-										</div>
-									{:else if hasRejected}
-										<div class="text-red-400 dark:text-red-500">
-											<svg
-												xmlns="http://www.w3.org/2000/svg"
-												fill="none"
-												viewBox="0 0 24 24"
-												stroke-width="2.5"
-												stroke="currentColor"
-												class="size-4"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													d="M6 18L18 6M6 6l12 12"
-												/>
-											</svg>
-										</div>
-									{:else}
-										<div class="text-gray-400 dark:text-gray-500">
-											<svg
-												xmlns="http://www.w3.org/2000/svg"
-												fill="none"
-												viewBox="0 0 24 24"
-												stroke-width="1.75"
-												stroke="currentColor"
-												class="size-3.5"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													d="M21.75 6.75a4.5 4.5 0 0 1-4.884 4.484c-1.076-.091-2.264.071-2.95.904l-7.152 8.684a2.548 2.548 0 1 1-3.586-3.586l8.684-7.152c.833-.686.995-1.874.904-2.95a4.5 4.5 0 0 1 6.336-4.486l-3.276 3.276a3.004 3.004 0 0 0 2.25 2.25l3.276-3.276c.256.565.398 1.192.398 1.852Z"
-												/>
-											</svg>
-										</div>
-									{/if}
-
-									<!-- Summary text -->
-									<div class="flex-1 min-w-0 line-clamp-1">
-										<span class="text-gray-600 dark:text-gray-300"
-											>{hasPending ? $t('chat.exploring') : $t('chat.explored')}</span
-										>
-										{#if groupSummaryText(calls)}
-											<span class="text-gray-400 dark:text-gray-500 ml-1"
-												>{groupSummaryText(calls)}</span
-											>
-										{/if}
-									</div>
-
-									<!-- Chevron -->
-									<div class="flex shrink-0 self-center text-gray-400 dark:text-gray-500">
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											fill="none"
-											viewBox="0 0 24 24"
-											stroke-width="3.5"
-											stroke="currentColor"
-											class="size-3 transition-transform duration-200 {isGroupOpen
-												? 'rotate-180'
-												: ''}"
-										>
-											<path
-												stroke-linecap="round"
-												stroke-linejoin="round"
-												d="m19.5 8.25-7.5 7.5-7.5-7.5"
-											/>
-										</svg>
-									</div>
+									{artifact.title || $t('chat.artifact')}
 								</div>
-							</button>
-
-							<!-- Expanded group content -->
-							{#if isGroupOpen}
-								<div transition:slide={{ duration: 300, easing: quintOut, axis: 'y' }}>
-									<div class="mb-0.5 space-y-0.5 mt-1">
-										{#each calls as item}
-											{@const args = item.arguments || {}}
-											{@const toolName = item.name}
-											{@const callId = item.call_id || toolName}
-											{@const isExecuting = item.status === 'running' || item.status === 'in_progress' || (!item.status && !done)}
-											{@const isDone = item.status === 'completed'}
-											{@const isRejected = item.status === 'rejected'}
-											{@const isPending = item.status === 'pending'}
-											{@const isExpanded = expandedCalls.has(callId)}
-											{@const pairedOutput = outputs.get(item.call_id)}
-
-											<div class="w-full min-w-0 flex flex-col">
-												<!-- Individual tool call row -->
-												<button
-													class="w-full min-w-0 text-left text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition cursor-pointer"
-													onclick={() => toggleCallExpanded(callId)}
-												>
-													<div
-														class="flex items-center gap-1.5 text-sm min-w-0 {isExecuting
-															? 'shimmer'
-															: ''}"
-													>
-														<!-- Status icon -->
-														{#if isExecuting}
-															<div class="flex justify-center text-center">
-																<svg
-																	aria-hidden="true"
-																	class="size-4"
-																	viewBox="0 0 24 24"
-																	fill="currentColor"
-																	xmlns="http://www.w3.org/2000/svg"
-																>
-																	<style>
-																		.spinner_inner {
-																			transform-origin: center;
-																			animation: spinner_inner_a 0.75s infinite linear;
-																		}
-																		@keyframes spinner_inner_a {
-																			100% {
-																				transform: rotate(360deg);
-																			}
-																		}
-																	</style>
-																	<path
-																		d="M12,1A11,11,0,1,0,23,12,11,11,0,0,0,12,1Zm0,19a8,8,0,1,1,8-8A8,8,0,0,1,12,20Z"
-																		opacity=".25"
-																	/>
-																	<path
-																		d="M10.14,1.16a11,11,0,0,0-9,8.92A1.59,1.59,0,0,0,2.46,12,1.52,1.52,0,0,0,4.11,10.7a8,8,0,0,1,6.66-6.61A1.42,1.42,0,0,0,12,2.69h0A1.57,1.57,0,0,0,10.14,1.16Z"
-																		class="spinner_inner"
-																	/>
-																</svg>
-															</div>
-														{:else if isDone}
-															<div class="text-emerald-500 dark:text-emerald-400">
-																<svg
-																	xmlns="http://www.w3.org/2000/svg"
-																	fill="none"
-																	viewBox="0 0 24 24"
-																	stroke-width="2"
-																	stroke="currentColor"
-																	class="size-4"
-																>
-																	<path
-																		stroke-linecap="round"
-																		stroke-linejoin="round"
-																		d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-																	/>
-																</svg>
-															</div>
-														{:else if isRejected}
-															<div class="text-red-400 dark:text-red-500">
-																<svg
-																	xmlns="http://www.w3.org/2000/svg"
-																	fill="none"
-																	viewBox="0 0 24 24"
-																	stroke-width="2.5"
-																	stroke="currentColor"
-																	class="size-4"
-																>
-																	<path
-																		stroke-linecap="round"
-																		stroke-linejoin="round"
-																		d="M6 18L18 6M6 6l12 12"
-																	/>
-																</svg>
-															</div>
-														{:else}
-															<div class="text-gray-400 dark:text-gray-500">
-																<svg
-																	xmlns="http://www.w3.org/2000/svg"
-																	fill="none"
-																	viewBox="0 0 24 24"
-																	stroke-width="1.75"
-																	stroke="currentColor"
-																	class="size-3.5"
-																>
-																	<path
-																		stroke-linecap="round"
-																		stroke-linejoin="round"
-																		d="M21.75 6.75a4.5 4.5 0 0 1-4.884 4.484c-1.076-.091-2.264.071-2.95.904l-7.152 8.684a2.548 2.548 0 1 1-3.586-3.586l8.684-7.152c.833-.686.995-1.874.904-2.95a4.5 4.5 0 0 1 6.336-4.486l-3.276 3.276a3.004 3.004 0 0 0 2.25 2.25l3.276-3.276c.256.565.398 1.192.398 1.852Z"
-																	/>
-																</svg>
-															</div>
-														{/if}
-
-														<!-- Label -->
-														<div class="flex-1 min-w-0 line-clamp-1">
-															<span class="font-normal">{toolLabel(toolName, args)}</span>
-														</div>
-
-														<!-- Right side: approval buttons or chevron -->
-														{#if isPending && chatId}
-															<!-- Approval buttons -->
-															<span
-																class="flex gap-1 shrink-0"
-																onclick={(e) => e.stopPropagation()}
-															>
-																<button
-																	class="text-[11px] px-2.5 py-0.5 rounded-md
-																	text-gray-600 dark:text-gray-300
-																	bg-gray-100 dark:bg-white/8
-																	hover:bg-gray-200 dark:hover:bg-white/12
-																	transition-colors duration-100"
-																	onclick={() => onapprove(messageId, item.call_id, true)}
-																	>{$t('chat.allow')}</button
-																>
-																<button
-																	class="text-[11px] px-2 py-0.5 rounded-md
-																	text-gray-400 dark:text-gray-500
-																	hover:text-gray-600 dark:hover:text-gray-300
-																	transition-colors duration-100"
-																	onclick={() => onapprove(messageId, item.call_id, false)}
-																	>{$t('chat.deny')}</button
-																>
-															</span>
-														{:else}
-															<!-- Chevron -->
-															<div class="flex shrink-0 self-center translate-y-[1px]">
-																<svg
-																	xmlns="http://www.w3.org/2000/svg"
-																	fill="none"
-																	viewBox="0 0 24 24"
-																	stroke-width="3.5"
-																	stroke="currentColor"
-																	class="size-3 transition-transform duration-200 text-gray-400 dark:text-gray-500 {isExpanded
-																		? 'rotate-180'
-																		: ''}"
-																>
-																	<path
-																		stroke-linecap="round"
-																		stroke-linejoin="round"
-																		d="m19.5 8.25-7.5 7.5-7.5-7.5"
-																	/>
-																</svg>
-															</div>
-														{/if}
-													</div>
-												</button>
-
-												<!-- Expanded detail panel -->
-												{#if isExpanded}
-													<div transition:slide={{ duration: 300, easing: quintOut, axis: 'y' }}>
-														<div
-															class="border border-gray-50 dark:border-gray-850/30 rounded-2xl my-1.5 p-3 space-y-3 overflow-hidden"
-														>
-															<!-- Input section -->
-															{#if Object.keys(args).length > 0}
-																<div>
-																	<div
-																		class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5 px-1"
-																	>
-																		{$t('chat.toolInput')}
-																	</div>
-																	{#if toolName === 'edit_file' && args.target}
-																		<!-- Diff view for edits -->
-																		<div
-																			class="text-[11px] font-mono rounded-lg overflow-hidden border border-gray-200/60 dark:border-white/6"
-																		>
-																			<div
-																				class="bg-red-50/80 dark:bg-red-950/20 text-red-700 dark:text-red-400 px-2.5 py-1 whitespace-pre-wrap break-all leading-relaxed"
-																			>
-																				<span
-																					class="select-none text-red-400 dark:text-red-600 mr-1"
-																					>−</span
-																				>{args.target.length > 500
-																					? args.target.slice(0, 500) + '…'
-																					: args.target}
-																			</div>
-																			<div
-																				class="bg-green-50/80 dark:bg-green-950/20 text-green-700 dark:text-green-400 px-2.5 py-1 whitespace-pre-wrap break-all leading-relaxed"
-																			>
-																				<span
-																					class="select-none text-green-400 dark:text-green-600 mr-1"
-																					>+</span
-																				>{(args.replacement || '').length > 500
-																					? args.replacement.slice(0, 500) + '…'
-																					: args.replacement || ''}
-																			</div>
-																		</div>
-																		{#if args.start_line}
-																			<div
-																				class="text-[10px] text-gray-400 dark:text-gray-600 mt-1 px-1"
-																			>
-																				{$t('chat.toolLines', { start: args.start_line, end: args.end_line || 'end' })}
-																			</div>
-																		{/if}
-																	{:else if toolName === 'run_command'}
-																		<code
-																			class="block text-xs font-mono text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded-lg px-2.5 py-1.5 overflow-x-auto break-all whitespace-pre-wrap"
-																			>{args.command}</code
-																		>
-																	{:else}
-																		<!-- Key-value pairs -->
-																		<div class="px-1 space-y-0.5">
-																			{#each Object.entries(args) as [key, value]}
-																				<div class="flex gap-2 text-xs py-0.5">
-																					<span class="text-gray-600 dark:text-gray-400 shrink-0"
-																						>{key}</span
-																					>
-																					<span class="text-gray-800 dark:text-gray-200 break-all">
-																						{typeof value === 'object'
-																							? JSON.stringify(value)
-																							: value}
-																					</span>
-																				</div>
-																			{/each}
-																		</div>
-																	{/if}
-																</div>
-															{/if}
-
-															<!-- Output section -->
-															{#if pairedOutput?.output}
-																<div>
-																	<div
-																		class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5 px-1"
-																	>
-																		{$t('chat.toolOutput')}
-																	</div>
-																	<div class="w-full min-w-0 overflow-hidden">
-																		<pre
-																			class="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words font-mono max-h-64 overflow-auto leading-relaxed">{pairedOutput
-																				.output.length > 10000
-																				? pairedOutput.output.slice(0, 10000)
-																				: pairedOutput.output}</pre>
-																		{#if pairedOutput.output.length > 10000}
-																			<div
-																				class="text-[10px] text-gray-400 dark:text-gray-600 mt-1 px-1"
-																			>
-																				{$t('chat.totalChars', { count: pairedOutput.output.length.toLocaleString() })}
-																			</div>
-																		{/if}
-																	</div>
-																</div>
-															{/if}
-														</div>
-													</div>
-												{/if}
-											</div>
-										{/each}
+								{#if preview}
+									<div
+										class="line-clamp-2 max-h-8 text-[10px] leading-4 font-normal text-gray-400 dark:text-gray-500 [overflow-wrap:anywhere]"
+									>
+										{preview}
 									</div>
-								</div>
+								{/if}
+							</div>
+						</button>
+					{:else if displayItem.type === 'activity_group'}
+						{#if displayItem.entries.length === 1}
+							{@const item = displayItem.entries[0]}
+							{#if item.type === 'reasoning'}
+								<ReasoningCollapsible {item} fallbackId={`reasoning-${groupIdx}-0`} />
+							{:else}
+								<ToolCallCollapsible
+									{item}
+									pairedOutput={displayItem.outputs.get(item.call_id)}
+									{done}
+									{chatId}
+									{messageId}
+									{toolLabel}
+									{onapprove}
+								/>
 							{/if}
-
-							<!-- Show approval buttons outside group when collapsed & has pending -->
-							{#if !isGroupOpen && hasPendingApproval && chatId}
-								<div class="mt-1 space-y-0.5">
-									{#each calls.filter((c: any) => c.status === 'pending') as item}
-										<div class="flex items-center gap-2 py-1 px-1">
-											<span
-												class="text-xs text-gray-500 dark:text-gray-400 flex-1 min-w-0 line-clamp-1"
-												>{toolLabel(item.name, item.arguments || {})}</span
-											>
-											<span class="flex gap-1 shrink-0">
-												<button
-													class="text-[11px] px-2.5 py-0.5 rounded-md
-													text-gray-600 dark:text-gray-300
-													bg-gray-100 dark:bg-white/8
-													hover:bg-gray-200 dark:hover:bg-white/12
-													transition-colors duration-100"
-													onclick={() => onapprove(messageId, item.call_id, true)}>{$t('chat.allow')}</button
-												>
-												<button
-													class="text-[11px] px-2 py-0.5 rounded-md
-													text-gray-400 dark:text-gray-500
-													hover:text-gray-600 dark:hover:text-gray-300
-													transition-colors duration-100"
-													onclick={() => onapprove(messageId, item.call_id, false)}>{$t('chat.deny')}</button
-												>
-											</span>
-										</div>
-									{/each}
-								</div>
-							{/if}
-						</div>
+						{:else}
+							<ConsecutiveActivityGroup
+								entries={displayItem.entries}
+								calls={displayItem.calls}
+								reasoning={displayItem.reasoning}
+								outputs={displayItem.outputs}
+								{done}
+								{chatId}
+								{messageId}
+								{groupIdx}
+								{toolLabel}
+								{onapprove}
+							/>
+						{/if}
 					{/if}
 				{/each}
 				{#if done && unrenderedContent && displayItems.length > 0}
@@ -969,6 +539,19 @@
 								/></svg
 							>
 						{/if}
+					</button>
+				{/if}
+				{#if done && $ttsEnabled && $ttsConfigured}
+					<button
+						class="p-0.5 rounded transition-colors duration-100
+							{speaking
+							? 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-white/10'
+							: 'text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-300'}"
+						onclick={onspeak}
+						aria-label={speaking ? $t('chat.stopSpeaking') : $t('chat.speakResponses')}
+						title={speaking ? $t('chat.stopSpeaking') : $t('chat.speakResponses')}
+					>
+						<Icon name="speaker" size={14} />
 					</button>
 				{/if}
 				{#if done && onregenerate}

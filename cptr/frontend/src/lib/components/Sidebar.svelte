@@ -545,6 +545,7 @@
 		flex-direction: column;
 		background: white;
 		border-right: 1px solid var(--color-gray-200);
+		padding-top: env(safe-area-inset-top, 0px);
 	}
 
 	:global(.dark) .sidebar {

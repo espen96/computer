@@ -1,7 +1,7 @@
 """Provider streaming and completion functions: raw httpx.
 
 Each streaming function takes a ChatCompletionForm + url + key.
-All yield normalized events: text_delta, tool_call, usage, done.
+All yield normalized events: text_delta, output, tool_call, usage, done.
 
 chat_completion() provides a simple non-streaming call for lightweight tasks
 (title generation, summarization, etc.).
@@ -10,6 +10,7 @@ chat_completion() provides a simple non-streaming call for lightweight tasks
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import logging
 import uuid
@@ -24,8 +25,19 @@ from cptr.env import (
     STREAM_READ_TIMEOUT_SECONDS,
     STREAM_WRITE_TIMEOUT_SECONDS,
 )
+from cptr.utils.logger import log_upstream_request
 
 logger = logging.getLogger(__name__)
+
+
+def _reasoning_output_item(text: str = "", *, status: str = "in_progress") -> dict:
+    """Create a Responses-style reasoning output item."""
+    return {
+        "type": "reasoning",
+        "id": f"rs_{uuid.uuid4().hex}",
+        "status": status,
+        "content": [{"type": "text", "text": text}],
+    }
 
 
 def _openrouter_headers(url: str) -> dict[str, str]:
@@ -93,6 +105,13 @@ async def chat_completion(
                 body["system"] = system
             if request_params:
                 body.update(request_params)
+            log_upstream_request(
+                provider="anthropic",
+                endpoint=f"{base_url}/messages",
+                model=model,
+                api_type="messages",
+                body=body,
+            )
             resp = await client.post(
                 f"{base_url}/messages",
                 json=body,
@@ -113,6 +132,13 @@ async def chat_completion(
                 body_r["instructions"] = system
             if request_params:
                 body_r.update(request_params)
+            log_upstream_request(
+                provider=provider,
+                endpoint=f"{base_url}/responses",
+                model=model,
+                api_type="responses",
+                body=body_r,
+            )
             resp = await client.post(
                 f"{base_url}/responses",
                 json=body_r,
@@ -130,6 +156,13 @@ async def chat_completion(
             }
             if request_params:
                 body_cc.update(request_params)
+            log_upstream_request(
+                provider=provider,
+                endpoint=f"{base_url}/chat/completions",
+                model=model,
+                api_type="chat_completions",
+                body=body_cc,
+            )
             resp = await client.post(
                 f"{base_url}/chat/completions",
                 json=body_cc,
@@ -169,7 +202,7 @@ def _to_anthropic_messages(messages: list[dict]) -> list[dict]:
         role = m["role"]
         if role == "system":
             continue  # system goes in body.system
-        
+
         content = m.get("content", "")
         if isinstance(content, list):
             formatted_content = []
@@ -177,14 +210,16 @@ def _to_anthropic_messages(messages: list[dict]) -> list[dict]:
                 if block.get("type") == "text":
                     formatted_content.append({"type": "text", "text": block.get("text", "")})
                 elif block.get("type") == "image":
-                    formatted_content.append({
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": block.get("media_type", "image/jpeg"),
-                            "data": block.get("base64", "")
+                    formatted_content.append(
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": block.get("media_type", "image/jpeg"),
+                                "data": block.get("base64", ""),
+                            },
                         }
-                    })
+                    )
             content = formatted_content
         if role == "tool":
             # tool result → Anthropic tool_result block
@@ -196,14 +231,16 @@ def _to_anthropic_messages(messages: list[dict]) -> list[dict]:
                     if block.get("type") == "text":
                         tool_content.append({"type": "text", "text": block.get("text", "")})
                     elif block.get("type") == "image":
-                        tool_content.append({
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": block.get("media_type", "image/jpeg"),
-                                "data": block.get("base64", ""),
+                        tool_content.append(
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": block.get("media_type", "image/jpeg"),
+                                    "data": block.get("base64", ""),
+                                },
                             }
-                        })
+                        )
             else:
                 tool_content = content
             result.append(
@@ -262,6 +299,13 @@ async def stream_anthropic(
         body.update(request_params)
     # Remove None values
     body = {k: v for k, v in body.items() if v is not None}
+    log_upstream_request(
+        provider="anthropic",
+        endpoint=f"{url}/messages",
+        model=form_data.model,
+        api_type="messages",
+        body=body,
+    )
     headers = {"x-api-key": key, "anthropic-version": "2023-06-01", **_openrouter_headers(url)}
 
     emitted = False
@@ -286,7 +330,10 @@ async def stream_anthropic(
                             msg_usage = event.get("message", {}).get("usage", {})
                             if msg_usage:
                                 usage_data["input_tokens"] = msg_usage.get("input_tokens", 0)
-                                for cache_key in ("cache_read_input_tokens", "cache_creation_input_tokens"):
+                                for cache_key in (
+                                    "cache_read_input_tokens",
+                                    "cache_creation_input_tokens",
+                                ):
                                     if msg_usage.get(cache_key):
                                         usage_data[cache_key] = msg_usage[cache_key]
 
@@ -342,11 +389,27 @@ async def stream_anthropic(
 # ── OpenAI Chat Completions ──────────────────────────────────
 
 
+def _reasoning_items_to_content(items: list[dict]) -> str:
+    """Convert Responses API reasoning items to a reasoning_content string.
+
+    Reasoning items may expose text in content or summary blocks. We extract
+    those text blocks and join them for Chat Completions-compatible providers.
+    """
+    texts: list[str] = []
+    for item in items:
+        blocks = item.get("content") or item.get("summary") or []
+        for block in blocks:
+            if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
+                texts.append(block["text"])
+    return "\n".join(texts)
+
+
 def _to_openai_messages(messages: list[dict], instructions: str) -> list[dict]:
     """Canonical messages → OpenAI Chat Completions format.
 
-    Strips non-standard fields (reasoning_items, fc_id in tool_calls)
-    that are used internally but would cause 400 errors from OpenAI.
+    Converts reasoning_items (Responses API format) to reasoning_content
+    (Chat Completions format) for providers like Kimi that require it.
+    Strips other non-standard fields (fc_id in tool_calls).
     """
     result = []
     if instructions:
@@ -366,24 +429,28 @@ def _to_openai_messages(messages: list[dict], instructions: str) -> list[dict]:
                     formatted_content.append(block)
                 elif block.get("type") == "image":
                     data_uri = f"data:{block.get('media_type', 'image/jpeg')};base64,{block.get('base64', '')}"
-                    formatted_content.append({
-                        "type": "image_url",
-                        "image_url": {"url": data_uri}
-                    })
+                    formatted_content.append({"type": "image_url", "image_url": {"url": data_uri}})
             new_m = dict(m)
             new_m["content"] = formatted_content
-            # Strip non-standard fields
-            new_m.pop("reasoning_items", None)
+            # Convert reasoning_items → reasoning_content for round-tripping
+            ri = new_m.pop("reasoning_items", None)
+            if ri and new_m.get("role") == "assistant":
+                rc = _reasoning_items_to_content(ri)
+                if rc:
+                    new_m["reasoning_content"] = rc
             result.append(new_m)
         else:
             out = dict(m)
-            # Strip non-standard fields that are only for Responses API
-            out.pop("reasoning_items", None)
+            # Convert reasoning_items → reasoning_content for round-tripping
+            ri = out.pop("reasoning_items", None)
+            if ri and out.get("role") == "assistant":
+                rc = _reasoning_items_to_content(ri)
+                if rc:
+                    out["reasoning_content"] = rc
             # Clean tool_calls: remove fc_id which is Responses-API-only
             if "tool_calls" in out:
                 out["tool_calls"] = [
-                    {k: v for k, v in tc.items() if k != "fc_id"}
-                    for tc in out["tool_calls"]
+                    {k: v for k, v in tc.items() if k != "fc_id"} for tc in out["tool_calls"]
                 ]
             result.append(out)
     return result
@@ -414,6 +481,13 @@ async def stream_openai_completions(
         body["tools"] = tools
     if request_params:
         body.update(request_params)
+    log_upstream_request(
+        provider="openai",
+        endpoint=f"{url}/chat/completions",
+        model=form_data.model,
+        api_type="chat_completions",
+        body=body,
+    )
     headers = {"Authorization": f"Bearer {key}", **_openrouter_headers(url)}
 
     emitted = False
@@ -431,9 +505,25 @@ async def stream_openai_completions(
                     logger.info("[stream] openai completions status=%s", resp.status_code)
                     if resp.status_code >= 400:
                         error_body = await resp.aread()
-                        logger.error("[stream] openai completions error body: %s", error_body.decode(errors="replace"))
+                        logger.error(
+                            "[stream] openai completions error body: %s",
+                            error_body.decode(errors="replace"),
+                        )
                     resp.raise_for_status()
                     tool_calls: dict[int, dict] = {}
+                    reasoning_buffer = ""  # Accumulate reasoning_content deltas (Kimi, DeepSeek)
+                    reasoning_item: dict | None = None
+
+                    def complete_reasoning_item() -> dict | None:
+                        nonlocal reasoning_buffer, reasoning_item
+                        if reasoning_item is None:
+                            return None
+                        reasoning_item["status"] = "completed"
+                        item = copy.deepcopy(reasoning_item)
+                        reasoning_item = None
+                        reasoning_buffer = ""
+                        return item
+
                     async for line in resp.aiter_lines():
                         if not line.startswith("data: ") or line == "data: [DONE]":
                             continue
@@ -441,9 +531,28 @@ async def stream_openai_completions(
                         choices = chunk.get("choices", [])
                         delta = choices[0].get("delta", {}) if choices else {}
 
+                        # Capture reasoning_content from providers like Kimi / DeepSeek
+                        if delta.get("reasoning_content"):
+                            reasoning_buffer += delta["reasoning_content"]
+                            if reasoning_item is None:
+                                reasoning_item = _reasoning_output_item()
+                            reasoning_item["content"][0]["text"] = reasoning_buffer
+                            emitted = True
+                            yield {"type": "output", "item": copy.deepcopy(reasoning_item)}
+
                         if delta.get("content"):
+                            item = complete_reasoning_item()
+                            if item is not None:
+                                emitted = True
+                                yield {"type": "output", "item": item}
                             emitted = True
                             yield {"type": "text_delta", "content": delta["content"]}
+
+                        if delta.get("tool_calls"):
+                            item = complete_reasoning_item()
+                            if item is not None:
+                                emitted = True
+                                yield {"type": "output", "item": item}
 
                         for tc in delta.get("tool_calls", []):
                             idx = tc["index"]
@@ -456,6 +565,11 @@ async def stream_openai_completions(
                             tool_calls[idx]["arguments_json"] += tc["function"].get("arguments", "")
 
                         if choices and choices[0].get("finish_reason") == "tool_calls":
+                            # Emit accumulated reasoning before tool calls
+                            item = complete_reasoning_item()
+                            if item is not None:
+                                emitted = True
+                                yield {"type": "output", "item": item}
                             for tc in tool_calls.values():
                                 emitted = True
                                 yield {
@@ -466,6 +580,12 @@ async def stream_openai_completions(
                                 }
 
                         if chunk.get("usage"):
+                            # Emit any remaining reasoning BEFORE usage
+                            # (usage triggers immediate save+return in chat_task)
+                            item = complete_reasoning_item()
+                            if item is not None:
+                                emitted = True
+                                yield {"type": "output", "item": item}
                             raw = chunk["usage"]
                             emitted = True
                             yield {
@@ -474,6 +594,11 @@ async def stream_openai_completions(
                                 "output_tokens": raw.get("completion_tokens", 0),
                             }
 
+                    # Emit any remaining reasoning if no usage event was received
+                    item = complete_reasoning_item()
+                    if item is not None:
+                        emitted = True
+                        yield {"type": "output", "item": item}
                     emitted = True
                     yield {"type": "done"}
             return
@@ -497,11 +622,7 @@ def _to_responses_input(messages: list[dict], instructions: str) -> list[dict]:
     # Pre-collect all tool result call_ids so we can validate function_calls
     # have matching outputs.  This prevents orphaned function_calls (from
     # crashes, data corruption, etc.) from permanently breaking the chat.
-    tool_result_ids = {
-        m.get("tool_call_id", "")
-        for m in messages
-        if m.get("role") == "tool"
-    }
+    tool_result_ids = {m.get("tool_call_id", "") for m in messages if m.get("role") == "tool"}
 
     items = []
     for m in messages:
@@ -561,13 +682,12 @@ def _to_responses_input(messages: list[dict], instructions: str) -> list[dict]:
                 formatted_content = []
                 for block in content:
                     if block.get("type") == "text":
-                        formatted_content.append({"type": "input_text", "text": block.get("text", "")})
+                        formatted_content.append(
+                            {"type": "input_text", "text": block.get("text", "")}
+                        )
                     elif block.get("type") == "image":
                         data_uri = f"data:{block.get('media_type', 'image/jpeg')};base64,{block.get('base64', '')}"
-                        formatted_content.append({
-                            "type": "input_image",
-                            "image_url": data_uri
-                        })
+                        formatted_content.append({"type": "input_image", "image_url": data_uri})
                 items.append({"type": "message", "role": role, "content": formatted_content})
             else:
                 items.append({"type": "message", "role": role, "content": content})
@@ -598,6 +718,13 @@ async def stream_openai_responses(
         body["tools"] = tools
     if request_params:
         body.update(request_params)
+    log_upstream_request(
+        provider="openai",
+        endpoint=f"{url}/responses",
+        model=form_data.model,
+        api_type="responses",
+        body=body,
+    )
     headers = {"Authorization": f"Bearer {key}", **_openrouter_headers(url)}
 
     emitted = False
@@ -606,7 +733,8 @@ async def stream_openai_responses(
             async with httpx.AsyncClient(timeout=_STREAM_TIMEOUT) as client:
                 logger.info(
                     "[stream] openai responses POST %s/responses model=%s input_items=%d types=%s",
-                    url, form_data.model,
+                    url,
+                    form_data.model,
                     len(body.get("input", [])),
                     [i.get("type", i.get("role", "?")) for i in body.get("input", [])],
                 )
@@ -616,7 +744,10 @@ async def stream_openai_responses(
                     logger.info("[stream] openai responses status=%s", resp.status_code)
                     if resp.status_code >= 400:
                         error_body = await resp.aread()
-                        logger.error("[stream] openai responses error body: %s", error_body.decode(errors="replace"))
+                        logger.error(
+                            "[stream] openai responses error body: %s",
+                            error_body.decode(errors="replace"),
+                        )
                     resp.raise_for_status()
                     async for line in resp.aiter_lines():
                         if not line.startswith("data: "):
@@ -644,8 +775,9 @@ async def stream_openai_responses(
                                 }
                             elif item["type"] == "reasoning":
                                 # Reasoning items must be round-tripped for reasoning models
+                                emitted = True
                                 yield {
-                                    "type": "reasoning",
+                                    "type": "output",
                                     "item": item,
                                 }
 

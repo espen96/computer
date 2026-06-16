@@ -7,8 +7,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 
-from cptr.utils.config import AuthResult, check_access, hash_password, now_ms
+from cptr.routers.chat import invalidate_model_cache
 from cptr.models import User, Auth, Config
+from cptr.utils.config import AuthResult, _get_jwt_secret, check_access, hash_password, now_ms
+from cptr.utils.crypto import decrypt_key, encrypt_key, mask_key
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -128,19 +130,26 @@ async def get_config_namespace(namespace: str, request: Request):
     return {"config": await Config.get_namespace(namespace)}
 
 
+def _prepare_config_updates(updates: dict) -> dict:
+    """Normalize sensitive config values before persisting them."""
+    prepared = dict(updates)
+    secret = _get_jwt_secret()
+    for key in ("audio.stt_api_key", "audio.tts_api_key"):
+        value = prepared.get(key)
+        if isinstance(value, str) and value and not value.startswith("encrypted:"):
+            prepared[key] = encrypt_key(value, secret)
+    return prepared
+
+
 @router.put("/config")
 async def put_config(body: ConfigUpdateRequest, request: Request):
     """Update config keys. Upserts each key."""
     require_admin(request)
-    await Config.upsert(body.config)
+    await Config.upsert(_prepare_config_updates(body.config))
     return {"ok": True}
 
 
 # ── Connections ──────────────────────────────────────────────
-
-from cptr.utils.crypto import encrypt_key, decrypt_key, mask_key
-from cptr.utils.config import _get_jwt_secret
-from cptr.routers.chat import invalidate_model_cache
 
 
 async def _get_connections() -> list[dict]:
@@ -367,6 +376,11 @@ CONFIG_KEY_CHAT_MODELS = "chat.models"
 async def get_model_config(request: Request):
     """Get per-model config and full model list (including inactive) for the admin Models tab."""
     require_admin(request)
+    return await _build_model_config(request)
+
+
+async def _build_model_config(request: Request):
+    """Build model configuration response for the admin Models tab."""
     config = await Config.get(CONFIG_KEY_CHAT_MODELS) or {}
 
     # Build full model list from all enabled connections (same as chat.py
@@ -390,6 +404,14 @@ async def get_model_config(request: Request):
             )
 
     return {"config": config, "models": models}
+
+
+@router.post("/models/refresh")
+async def refresh_model_list(request: Request):
+    """Clear cached provider-discovered models and return the refreshed model list."""
+    require_admin(request)
+    invalidate_model_cache(request.app.state)
+    return await _build_model_config(request)
 
 
 class UpdateModelConfigRequest(BaseModel):

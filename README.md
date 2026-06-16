@@ -12,17 +12,11 @@
 
 ![Cptr Demo](./demo.png)
 
-The computer used to be a room. Then a desk. Then a bag. Now it's a URL.
+<sub>See more at [cptr.sh](https://cptr.sh/)</sub>
 
-Your phone goes everywhere with you. You run your life from it. Your computer used to stay home. Now it can come along.
+`cptr` (short for "computer") runs on your machine and serves your whole computer (files, terminal, editor, git) to any browser. It literally is your computer.
 
-`cptr` (short for "computer") runs on your machine and puts the whole thing in a browser tab. Pull out your phone and you're in. Files, editor, terminal, git, running on the computer you already own.
-
-Push a hotfix from the train. Check on a deploy from bed. Ship a side project from the park. Stage and commit without touching the command line, or open the terminal and do it the old way. Search across files. Preview markdown. Drag things around. Switch between projects without losing your place.
-
-Close the tab. Come back tomorrow on any device. Everything is where you left it. Sessions survive disconnects. Your work doesn't care which screen you're on.
-
-Life is short. Touch grass.
+Phone, tablet, laptop, another computer, even the one it's running on. Designed to feel native on every screen. Plug in an AI that can actually read, write, and run things on your machine, or bring your favourite terminal agent. Terminal multiplexer, parallel AI agents, full workstation, one tool, any device.
 
 ## Install
 
@@ -76,6 +70,9 @@ Bring your own API key. Works with OpenAI, Anthropic, Ollama, or any OpenAI-comp
 | | |
 |---|---|
 | 💬 **Chat** | Built-in AI with streaming responses and tool calling. Not just conversation: it can act. |
+| 🎙️ **Voice mode** | Talk to the AI hands-free. It listens, responds, and reads the answer back to you. The mic re-arms so you can have a real conversation. |
+| 🔊 **Text-to-speech** | AI responses read aloud, sentence by sentence. Works with any OpenAI-compatible TTS API. |
+| 💭 **Reasoning** | See what the AI is thinking. Models like o3 and Claude show their chain of thought as expandable sections. |
 | 🔧 **File tools** | AI reads, writes, edits, and searches your codebase directly. |
 | ▶️ **Run commands** | AI executes shell commands and reads the output. Foreground or background. |
 | 🌐 **Web browsing** | Navigate pages, click elements, fill forms, take screenshots. |
@@ -113,6 +110,8 @@ cptr exposes an OpenAI-compatible API (`/v1/chat/completions`). Any client that 
 | 🔔 **Notifications** | Browser notifications and webhooks (Slack, Discord, Teams) when tasks finish. |
 | 📊 **Usage** | Token counts and timing on every response. |
 | 📄 **System prompts** | Per-model, per-workspace, or global. Template variables included. |
+| 📋 **Audit logging** | Structured audit trail of all API mutations with automatic redaction of sensitive data. |
+| 🪵 **Diagnostic logging** | Configurable structured logs (text or JSON) with optional upstream request capture. |
 | ⌨️ **Keyboard shortcuts** | Customisable keybindings with a settings panel. |
 | 🌍 **10 languages** | EN, DE, ES, FR, JA, KO, PT-BR, RU, ZH-CN, ZH-TW. |
 | 🔐 **Auth** | Username/password with JWT sessions. Signup toggle for admins. |
@@ -125,9 +124,13 @@ cptr exposes an OpenAI-compatible API (`/v1/chat/completions`). Any client that 
 
 **Computer, not chat.** The core is the filesystem, the terminal, and git. Files over apps. Plain files on your machine, not content trapped inside another product. AI conversations are files too: searchable, editable, movable, commit-able. cptr is a window into the real system, not a container on top of it.
 
-Read our [Manifesto](MANIFESTO.md).
+`cptr` runs on your machine and puts the whole thing in a browser tab. Pull out your phone and you're in. Files, editor, terminal, git, running on the computer you already own.
 
+Push a hotfix from the train. Check on a deploy from bed. Ship a side project from the park. Stage and commit without touching the command line, or open the terminal and do it the old way. Search across files. Preview markdown. Drag things around. Switch between projects without losing your place.
 
+Close the tab. Come back tomorrow on any device. Everything is where you left it. Sessions survive disconnects. Your work doesn't care which screen you're on.
+
+Life is short. Touch grass. Read our [Manifesto](MANIFESTO.md).
 
 ## Docker
 
@@ -145,6 +148,8 @@ docker run --rm -it \
 Then open the URL printed in the logs, usually `http://localhost:8000/?token=...`.
 
 `cptr` stores its state in `/data`. Mount your project into the container, like `-v "$PWD:/workspace"`, so cptr can access it.
+
+If you bind-mount a host directory to `/data`, make sure that directory is writable by the container user. SQLite needs to create and update `/data/app.db`, and host directory permissions take precedence over the image's built-in `/data` ownership.
 
 The `:dev` image is also available and tracks the `main` branch.
 

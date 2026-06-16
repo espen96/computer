@@ -331,7 +331,7 @@
 		<div
 			id="main-col"
 			class="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden"
-			style="padding-bottom: var(--keyboard-inset-bottom, 0px);"
+			style="padding-top: env(safe-area-inset-top, 0px); padding-bottom: var(--keyboard-inset-bottom, 0px);"
 		>
 			{#if !$currentWorkspace && $page.url.pathname === '/'}
 				<Bar />

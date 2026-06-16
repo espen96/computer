@@ -8,7 +8,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import platform
+import re
 import uuid
+from datetime import date
 from pathlib import Path
 
 from cptr.env import CHAT_MAX_ITERATIONS, CHAT_TOOL_MAX_CHARS
@@ -34,7 +37,8 @@ logger = logging.getLogger(__name__)
 
 PLAN_MODE_PROMPT = (
     "[Plan Mode] Research the codebase with read-only tools, then present your plan "
-    "using create_artifact. Wait for approval before coding."
+    "using create_artifact. Then wait for an explicit approval message before using "
+    "tools or implementing."
 )
 
 # ── Task registry ───────────────────────────────────────────
@@ -316,10 +320,6 @@ def _load_instruction_files(workspace: str, max_bytes: int = 32_000) -> str:
 
 # ── Template engine ─────────────────────────────────────────
 
-import platform
-import re
-from datetime import date
-
 _TEMPLATE_RE = re.compile(r"\{\{(\w+)\}\}")
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -327,7 +327,8 @@ DEFAULT_SYSTEM_PROMPT = (
     "You have access to tools to read, search, and modify files in the workspace. "
     "Use them to help the user with their coding tasks.\n\n"
     "For complex tasks, create an implementation plan first using "
-    "create_artifact, then wait for approval before coding."
+    "create_artifact. Then wait for an explicit approval message before using "
+    "tools or implementing."
     "\n\n{{INSTRUCTIONS}}"
     "\n\n{{SKILLS}}"
     "\n\nWorkspace: {{WORKSPACE_NAME}}"
@@ -434,6 +435,24 @@ async def _load_system_prompt(workspace: str, model: str = "") -> str:
     # Render template variables
     variables = _build_template_variables(workspace, model)
     return _render_template(template, variables)
+
+
+VOICE_MODE_SYSTEM_PROMPT = (
+    "You are in voice mode. Keep responses brief, conversational, and easy to hear aloud. "
+    "Prefer one or two short paragraphs. Ask at most one focused follow-up question when needed. "
+    "Avoid long lists, code blocks, tables, and verbose explanations unless the user explicitly asks."
+)
+
+
+async def _apply_voice_mode_system_prompt(system: str, chat_params: dict) -> str:
+    if chat_params.get("voice_mode") is not True:
+        return system
+    prompt = str(
+        (await Config.get("audio.voice_mode_system_prompt")) or VOICE_MODE_SYSTEM_PROMPT
+    ).strip()
+    if not prompt:
+        return system
+    return f"{system}\n\n[VOICE MODE]\n{prompt}"
 
 
 # ── Title generation ────────────────────────────────────────
@@ -612,9 +631,7 @@ async def _load_message_history(chat_id: str, message_id: str) -> tuple[list[dic
             # This is needed to filter out orphaned function_calls
             # (e.g. from crashes, partial persistence, or data corruption).
             output_call_ids = {
-                item["call_id"]
-                for item in m.output
-                if item.get("type") == "function_call_output"
+                item["call_id"] for item in m.output if item.get("type") == "function_call_output"
             }
 
             # ── Group output items into per-iteration turns ──
@@ -671,10 +688,7 @@ async def _load_message_history(chat_id: str, message_id: str) -> tuple[list[dic
                 for ti, turn in enumerate(turns):
                     # Filter calls to only those with matching outputs
                     turn_output_ids = {o["call_id"] for o in turn["outputs"]}
-                    matched_calls = [
-                        tc for tc in turn["calls"]
-                        if tc["id"] in turn_output_ids
-                    ]
+                    matched_calls = [tc for tc in turn["calls"] if tc["id"] in turn_output_ids]
                     if matched_calls:
                         if ti == 0:
                             # First turn: attach to the existing entry
@@ -721,9 +735,7 @@ def _sanitize_tool_pairs(messages: list[dict]) -> list[dict]:
     """
     # Collect all tool-result call_ids in the conversation
     tool_result_ids = {
-        m["tool_call_id"]
-        for m in messages
-        if m.get("role") == "tool" and m.get("tool_call_id")
+        m["tool_call_id"] for m in messages if m.get("role") == "tool" and m.get("tool_call_id")
     }
 
     # Collect all tool_call ids declared by assistant messages
@@ -788,7 +800,10 @@ def _parse_image_data_uri(result: str) -> tuple[str, str] | None:
 
 
 def _append_tool_to_messages(
-    messages: list[dict], event: dict, result: str, provider: str,
+    messages: list[dict],
+    event: dict,
+    result: str,
+    provider: str,
     reasoning_items: list[dict] | None = None,
 ):
     """Append a tool call + result to the message history for the next API call."""
@@ -942,6 +957,49 @@ def _scrub_incomplete_items(output_items: list[dict]) -> None:
             item["status"] = "failed"
 
 
+def _reasoning_text_len(item: dict) -> int:
+    """Return displayable reasoning text length for diagnostics."""
+    blocks = item.get("summary") or item.get("content") or []
+    if not isinstance(blocks, list):
+        return 0
+    return sum(len(block.get("text") or "") for block in blocks if isinstance(block, dict))
+
+
+def _output_debug_stats(output_items: list[dict] | None) -> tuple[dict[str, int], int, int]:
+    """Return output type counts plus reasoning count/text length."""
+    counts: dict[str, int] = {}
+    reasoning_count = 0
+    reasoning_chars = 0
+    for item in output_items or []:
+        itype = item.get("type", "?")
+        counts[itype] = counts.get(itype, 0) + 1
+        if itype == "reasoning":
+            reasoning_count += 1
+            reasoning_chars += _reasoning_text_len(item)
+    return counts, reasoning_count, reasoning_chars
+
+
+def _output_item_key(item: dict) -> tuple | None:
+    """Stable key for Responses-style output item updates."""
+    if item.get("id"):
+        return ("id", item["id"])
+    if item.get("type") and item.get("call_id"):
+        return ("call", item["type"], item["call_id"])
+    return None
+
+
+def _upsert_output_item(items: list[dict], item: dict) -> bool:
+    """Insert or replace a Responses-style output item by id/call_id."""
+    key = _output_item_key(item)
+    if key is not None:
+        for idx, existing in enumerate(items):
+            if _output_item_key(existing) == key:
+                items[idx] = item
+                return False
+    items.append(item)
+    return True
+
+
 def _find_safe_split(messages: list[dict], target_keep: int) -> int:
     """Find a safe split index that doesn't break tool call pairs.
 
@@ -1067,6 +1125,9 @@ async def run_chat_task(
         nonlocal text_buffer
         if not text_buffer:
             return None
+        if not text_buffer.strip():
+            text_buffer = ""
+            return None
         logger.info(
             "[task %s] flush_text: %d chars into message item", message_id[:8], len(text_buffer)
         )
@@ -1086,11 +1147,34 @@ async def run_chat_task(
         """Update in-memory state so API can serve it on refresh."""
         _task_state[message_id] = {"content": content, "output": output_items}
 
+    async def _save_message(save_reason: str, **kwargs) -> bool:
+        """Persist a message update and log enough detail to debug skipped saves."""
+        saved_output = kwargs.get("output", output_items)
+        saved_content = kwargs.get("content", content)
+        counts, reasoning_count, reasoning_chars = _output_debug_stats(saved_output)
+        logger.info(
+            "[task %s] db save (%s) begin: done=%s content=%d chars output=%d items reasoning=%d items/%d chars types=%s",
+            message_id[:8],
+            save_reason,
+            kwargs.get("done", "<unchanged>"),
+            len(saved_content or ""),
+            len(saved_output or []),
+            reasoning_count,
+            reasoning_chars,
+            counts,
+        )
+        saved = await ChatMessage.update(message_id, **kwargs)
+        log = logger.info if saved else logger.warning
+        log("[task %s] db save (%s) result: updated=%s", message_id[:8], save_reason, saved)
+        return saved
+
     try:
         provider = connection["provider"]
         api_key = decrypt_key(connection.get("api_key", ""), _get_jwt_secret())
         base_url = connection.get("base_url") or _default_base_url(provider)
 
+        chat_obj = await Chat.get_by_id(chat_id)
+        chat_params = (chat_obj.meta or {}).get("params", {}) if chat_obj else {}
         system = await _load_system_prompt(workspace, model)
         messages, loaded_summary = await _load_message_history(chat_id, message_id)
         if loaded_summary:
@@ -1105,12 +1189,10 @@ async def run_chat_task(
             tools = [t for t in tools if t["name"] != "view_skill"]
 
         # Strip delegate_task from sub-agent chats (depth limit = 1)
-        chat_obj = await Chat.get_by_id(chat_id)
         if chat_obj and (chat_obj.meta or {}).get("subagent"):
             tools = [t for t in tools if t["name"] != "delegate_task"]
 
         # Parse $skill-name mentions from the user message to auto-activate skills
-        chat_params = (chat_obj.meta or {}).get("params", {}) if chat_obj else {}
         attached_skill_ids: list[str] = []
         if skills and messages:
             # Find the last user message
@@ -1134,6 +1216,8 @@ async def run_chat_task(
                     _activated_skills.add(sid)  # mark as activated for dedup
             if skill_blocks:
                 system += "\n\n" + "\n\n".join(skill_blocks)
+
+        system = await _apply_voice_mode_system_prompt(system, chat_params)
 
         # Plan mode: strip write tools, inject prompt as user message (not system, to preserve cache)
         plan_mode = chat_params.get("plan_mode", False)
@@ -1206,6 +1290,7 @@ async def run_chat_task(
                             skill_blocks.append(format_skill_content(skill))
                     if skill_blocks:
                         system += "\n\n" + "\n\n".join(skill_blocks)
+                system = await _apply_voice_mode_system_prompt(system, chat_params)
                 messages = keep_zone
                 last_usage = None  # reset after compaction
                 new_messages_since = 0
@@ -1272,7 +1357,8 @@ async def run_chat_task(
 
             restart = False
             pending_calls: list[dict] = []  # Collect tool calls from this response
-            pending_reasoning: list[dict] = []  # Reasoning items for round-tripping
+            response_reasoning_items: list[dict] = []  # Pair with tool outputs on the next request
+            streamed_reasoning_chars = 0
 
             async for event in stream:
                 if event["type"] == "text_delta":
@@ -1285,9 +1371,30 @@ async def run_chat_task(
                     # Collect tool call — don't execute yet
                     pending_calls.append(event)
 
-                elif event["type"] == "reasoning":
-                    # Collect reasoning items for round-tripping with tool calls
-                    pending_reasoning.append(event["item"])
+                elif event["type"] in ("output", "reasoning"):
+                    # Providers stream normalized Responses-style output items.
+                    # "reasoning" is kept temporarily for compatibility with older
+                    # provider adapters.
+                    item = event["item"]
+                    _upsert_output_item(output_items, item)
+                    if item.get("type") == "reasoning":
+                        streamed_reasoning_chars = max(
+                            streamed_reasoning_chars,
+                            _reasoning_text_len(item),
+                        )
+                        if item.get("status") in (None, "completed"):
+                            _upsert_output_item(response_reasoning_items, item)
+                    logger.info(
+                        "[task %s] output item: type=%s status=%s output=%d items reasoning_chars=%d response_reasoning_items=%d",
+                        message_id[:8],
+                        item.get("type"),
+                        item.get("status"),
+                        len(output_items),
+                        streamed_reasoning_chars,
+                        len(response_reasoning_items),
+                    )
+                    _sync_state()
+                    await emit(output=item)
 
                 elif event["type"] == "usage":
                     usage = {k: v for k, v in event.items() if k != "type"}
@@ -1301,15 +1408,14 @@ async def run_chat_task(
                     if not pending_calls:
                         # No tool calls — final response, we're done
                         _flush_text()
-                        logger.info(
-                            "[task %s] save (usage): content=%d chars, output=%d items, types=%s",
-                            message_id[:8],
-                            len(content),
-                            len(output_items),
-                            [i.get("type") for i in output_items],
-                        )
-                        await ChatMessage.update(
-                            message_id,
+                        if streamed_reasoning_chars and not response_reasoning_items:
+                            logger.warning(
+                                "[task %s] reasoning output streamed (%d chars) but no completed reasoning item arrived before usage; DB output may contain only in-progress reasoning",
+                                message_id[:8],
+                                streamed_reasoning_chars,
+                            )
+                        await _save_message(
+                            "usage",
                             content=content,
                             output=output_items,
                             usage=usage,
@@ -1320,11 +1426,36 @@ async def run_chat_task(
                         return
 
                 elif event["type"] == "done":
-                    # Stream ended without explicit usage
-                    pass
+                    # Stream ended — if usage already triggered a save+return, we won't
+                    # reach here. This is the fallback for providers that don't support
+                    # stream_options.include_usage.
+                    if not pending_calls:
+                        _flush_text()
+                        if streamed_reasoning_chars and not response_reasoning_items:
+                            logger.warning(
+                                "[task %s] reasoning output streamed (%d chars) but no completed reasoning item arrived before done; DB output may contain only in-progress reasoning",
+                                message_id[:8],
+                                streamed_reasoning_chars,
+                            )
+                        await _save_message(
+                            "done fallback",
+                            content=content,
+                            output=output_items,
+                            usage=last_usage,
+                            done=True,
+                        )
+                        _task_state.pop(message_id, None)
+                        await _emit_done()
+                        return
 
             # ── Process collected tool calls ────────────────────
             if pending_calls:
+                if streamed_reasoning_chars and not response_reasoning_items:
+                    logger.warning(
+                        "[task %s] reasoning output streamed (%d chars) before tool calls but no completed reasoning item arrived; model continuation will not include reasoning items",
+                        message_id[:8],
+                        streamed_reasoning_chars,
+                    )
                 flushed_item = _flush_text()
 
                 tool_ctx = {
@@ -1350,9 +1481,6 @@ async def run_chat_task(
                 if needs_approval:
                     # First non-auto tool stops the loop for approval
                     tc = needs_approval
-                    # Store reasoning items before function_call for round-tripping
-                    for ri in pending_reasoning:
-                        output_items.append(ri)
                     item = {
                         "type": "function_call",
                         "id": str(uuid.uuid4()),
@@ -1363,8 +1491,8 @@ async def run_chat_task(
                         "status": "pending",
                     }
                     output_items.append(item)
-                    await ChatMessage.update(
-                        message_id,
+                    await _save_message(
+                        "pending approval",
                         content=content,
                         output=output_items,
                         done=False,
@@ -1376,9 +1504,7 @@ async def run_chat_task(
                     await emit(done=True)
                     return
 
-                # All calls are auto-approved — store reasoning + build UI items
-                for ri in pending_reasoning:
-                    output_items.append(ri)
+                # All calls are auto-approved — build UI items
                 call_items: list[tuple[dict, dict]] = []  # (event, ui_item)
                 for tc in pending_calls:
                     item = {
@@ -1401,8 +1527,12 @@ async def run_chat_task(
                 _sync_state()
 
                 # Separate delegate_task (concurrent) from others (sequential)
-                delegate_indices = [i for i, (tc, _) in enumerate(call_items) if tc["name"] == "delegate_task"]
-                other_indices = [i for i, (tc, _) in enumerate(call_items) if tc["name"] != "delegate_task"]
+                delegate_indices = [
+                    i for i, (tc, _) in enumerate(call_items) if tc["name"] == "delegate_task"
+                ]
+                other_indices = [
+                    i for i, (tc, _) in enumerate(call_items) if tc["name"] != "delegate_task"
+                ]
 
                 # Execute non-delegate tools sequentially first
                 # Collect results for batch message construction
@@ -1441,8 +1571,10 @@ async def run_chat_task(
                 # with their shared reasoning items (required for reasoning model round-tripping)
                 if sequential_results:
                     _append_batch_to_messages(
-                        messages, sequential_results, provider,
-                        reasoning_items=pending_reasoning,
+                        messages,
+                        sequential_results,
+                        provider,
+                        reasoning_items=response_reasoning_items,
                     )
                     new_messages_since += 1 + len(sequential_results)
 
@@ -1487,30 +1619,25 @@ async def run_chat_task(
                     # Build combined message for all delegate calls
                     if delegate_results:
                         # Only attach reasoning if sequential calls didn't consume it
-                        ri = pending_reasoning if not other_indices else None
+                        ri = response_reasoning_items if not other_indices else None
                         _append_batch_to_messages(
-                            messages, delegate_results, provider,
+                            messages,
+                            delegate_results,
+                            provider,
                             reasoning_items=ri,
                         )
                         new_messages_since += 1 + len(delegate_results)
 
                 # Persist after all tool calls
-                await ChatMessage.update(message_id, content=content, output=output_items)
+                await _save_message("tool calls complete", content=content, output=output_items)
                 restart = True
 
             if not restart:
                 flushed_item = _flush_text()
                 if flushed_item:
                     await emit(output=flushed_item)
-                logger.info(
-                    "[task %s] save (end): content=%d chars, output=%d items, types=%s",
-                    message_id[:8],
-                    len(content),
-                    len(output_items),
-                    [i.get("type") for i in output_items],
-                )
-                await ChatMessage.update(
-                    message_id,
+                await _save_message(
+                    "end",
                     content=content,
                     output=output_items,
                     done=True,
@@ -1520,8 +1647,8 @@ async def run_chat_task(
                 return
 
         # Max iterations reached
-        await ChatMessage.update(
-            message_id,
+        await _save_message(
+            "max iterations",
             content=content,
             output=output_items,
             done=True,
@@ -1533,7 +1660,7 @@ async def run_chat_task(
     except asyncio.CancelledError:
         _flush_text()
         _scrub_incomplete_items(output_items)
-        await ChatMessage.update(message_id, content=content, output=output_items, done=True)
+        await _save_message("cancelled", content=content, output=output_items, done=True)
         _task_state.pop(message_id, None)
         await _emit_done()
     except Exception as e:
@@ -1561,8 +1688,8 @@ async def run_chat_task(
         if flushed_item:
             await emit(output=flushed_item)
         _scrub_incomplete_items(output_items)
-        await ChatMessage.update(
-            message_id,
+        await _save_message(
+            "error",
             content=content,
             output=output_items,
             done=True,

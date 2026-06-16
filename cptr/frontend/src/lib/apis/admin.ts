@@ -120,6 +120,9 @@ export interface ModelConfigResponse {
 export const getModelConfig = async (): Promise<ModelConfigResponse> =>
 	fetchJSON<ModelConfigResponse>('/api/admin/models/config');
 
+export const refreshModelList = async (): Promise<ModelConfigResponse> =>
+	fetchJSON<ModelConfigResponse>('/api/admin/models/refresh', { method: 'POST' });
+
 export const updateModelConfig = (
 	modelId: string,
 	update: { is_active?: boolean; params?: Record<string, unknown> }

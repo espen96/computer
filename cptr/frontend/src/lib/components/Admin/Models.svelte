@@ -3,12 +3,15 @@
 	import { toast } from 'svelte-sonner';
 	import {
 		getModelConfig,
+		refreshModelList,
 		updateModelConfig,
 		getAdminConfig,
 		updateConfig,
 		type ModelConfigEntry
 	} from '$lib/apis/admin';
 	import { t } from '$lib/i18n';
+	import { tooltip } from '$lib/tooltip';
+	import { refreshChatState } from '$lib/stores/chat';
 	import Icon from '../Icon.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import ModelSelector from '$lib/components/common/ModelSelector.svelte';
@@ -26,6 +29,7 @@
 
 	let loading = $state(true);
 	let saving = $state(false);
+	let refreshing = $state(false);
 	let models = $state<ModelEntry[]>([]);
 	let selectedId = $state<string | null>(null);
 
@@ -54,7 +58,7 @@
 
 	const DEFAULT_PROMPT_PLACEHOLDER = `You are a helpful coding assistant. You have access to tools to read, search, and modify files in the workspace. Use them to help the user with their coding tasks.
 
-For complex tasks, create an implementation plan first using create_artifact, then wait for approval before coding.
+For complex tasks, create an implementation plan first using create_artifact. Then wait for an explicit approval message before using tools or implementing.
 
 {{INSTRUCTIONS}}
 
@@ -86,36 +90,74 @@ Files:
 		return result;
 	}
 
-	onMount(async () => {
-		try {
-			const data = await getModelConfig();
-			const config = data.config || {};
+	function applyModelConfig(
+		data: Awaited<ReturnType<typeof getModelConfig>>,
+		preserveDirty = false
+	) {
+		const config = data.config || {};
+		const previousById = new Map(models.map((model) => [model.id, model]));
+
+		if (!preserveDirty || !globalDirty) {
 			globalRows = parseRows(config['*']);
 			globalSystemPrompt = config['*']?.params?.system_prompt || '';
 			globalExpanded = globalRows.length > 0 || !!globalSystemPrompt;
-			models = data.models.map((m) => {
-				const mc = config[m.id];
-				return {
-					...m,
-					is_active: mc?.is_active !== false,
-					rows: parseRows(mc),
-					systemPrompt: (mc?.params as any)?.system_prompt || '',
-					dirty: false
-				};
-			});
+		}
+
+		models = data.models.map((m) => {
+			const previous = previousById.get(m.id);
+			if (preserveDirty && previous?.dirty) {
+				return { ...previous, ...m };
+			}
+
+			const mc = config[m.id];
+			return {
+				...m,
+				is_active: mc?.is_active !== false,
+				rows: parseRows(mc),
+				systemPrompt: (mc?.params as any)?.system_prompt || '',
+				dirty: false
+			};
+		});
+
+		if (selectedId && !models.some((model) => model.id === selectedId)) {
+			selectedId = null;
+		}
+	}
+
+	async function loadModelConfig() {
+		try {
+			applyModelConfig(await getModelConfig());
 		} catch {
 			toast.error($t('models.failedToLoad'));
 		} finally {
 			loading = false;
 		}
+	}
+
+	onMount(async () => {
+		await loadModelConfig();
 
 		// Load admin config (default model, context compaction)
 		try {
 			const adminCfg = await getAdminConfig();
 			compactTokenThreshold = Number(adminCfg['chat.compact_token_threshold']) || 80000;
-			defaultModelId = typeof adminCfg['chat.default_model'] === 'string' ? adminCfg['chat.default_model'] : '';
+			defaultModelId =
+				typeof adminCfg['chat.default_model'] === 'string' ? adminCfg['chat.default_model'] : '';
 		} catch {}
 	});
+
+	async function refreshModels() {
+		refreshing = true;
+		try {
+			applyModelConfig(await refreshModelList(), true);
+			await refreshChatState();
+			toast.success($t('models.refreshed'));
+		} catch {
+			toast.error($t('models.refreshFailed'));
+		} finally {
+			refreshing = false;
+		}
+	}
 
 	async function toggleModel(e: Event, model: ModelEntry) {
 		e.stopPropagation();
@@ -278,9 +320,20 @@ Files:
 		<div class="flex justify-center py-8"><Spinner size={16} /></div>
 	{:else}
 		<div class="flex-1 min-h-0 overflow-y-auto">
-			<h2 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
-				{$t('admin.models')}
-			</h2>
+			<div class="flex items-center justify-between mb-4">
+				<h2 class="text-sm font-medium text-gray-900 dark:text-white">
+					{$t('admin.models')}
+				</h2>
+				<button
+					class="flex items-center justify-center w-6 h-6 rounded-lg text-gray-400 hover:text-gray-700 disabled:opacity-50 disabled:hover:text-gray-400 dark:text-gray-600 dark:hover:text-gray-300 dark:disabled:hover:text-gray-600 transition-colors duration-75"
+					onclick={refreshModels}
+					disabled={refreshing || saving}
+					aria-label={$t('models.refresh')}
+					use:tooltip={$t('models.refresh')}
+				>
+					<Icon name="refresh" size={13} class={refreshing ? 'animate-spin' : ''} />
+				</button>
+			</div>
 
 			<!-- Default model -->
 			<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2">
