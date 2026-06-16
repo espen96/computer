@@ -27,7 +27,6 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS runtime
 
 LABEL org.opencontainers.image.source="https://github.com/open-webui/computer"
 LABEL org.opencontainers.image.description="cptr - your computer, from anywhere"
-LABEL org.opencontainers.image.licenses="BSL-1.1"
 
 # Runtime deps: git for git operations, tini for PID 1
 RUN apt-get update && \
