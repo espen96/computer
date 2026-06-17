@@ -48,6 +48,8 @@ export interface SendMessageResult {
 	queued?: boolean;
 	user_message?: ChatMessageRow;
 	assistant_message?: ChatMessageRow;
+	workspace?: string;
+	workspace_name?: string;
 }
 
 export interface ChatSendParams {
@@ -55,6 +57,17 @@ export interface ChatSendParams {
 	plan_mode?: boolean;
 	request_params?: Record<string, unknown>;
 	voice_mode?: boolean;
+	chat_mode?: boolean;
+}
+
+export interface CompactChatResult {
+	ok: boolean;
+	compacted: boolean;
+	reason?: string;
+	dropped_messages?: number;
+	kept_messages?: number;
+	summary_chars?: number;
+	context_usage?: ContextUsage | null;
 }
 
 export interface CompactChatResult {
@@ -88,6 +101,12 @@ export const getChat = (chatId: string, modelId?: string) => {
 export const deleteChat = (chatId: string) =>
 	fetchJSON<{ ok: boolean }>(`/api/chats/${chatId}`, { method: 'DELETE' });
 
+export const renameChat = (chatId: string, title: string) =>
+	fetchJSON<{ ok: boolean; title: string }>(
+		`/api/chats/${chatId}/title`,
+		{ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) }
+	);
+
 // ── Mutations ───────────────────────────────────────────────
 
 export const sendMessage = (
@@ -110,7 +129,8 @@ export const sendMessage = (
 			parent_id: parentId ?? null,
 			regeneration_prompt: regenerationPrompt,
 			files: files ?? [],
-			params
+			params,
+			chat_mode: params.chat_mode ?? false
 		})
 	);
 

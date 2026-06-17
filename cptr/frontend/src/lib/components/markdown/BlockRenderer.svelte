@@ -5,6 +5,18 @@
 	import MermaidBlock from './MermaidBlock.svelte';
 	import InlineRenderer from './InlineRenderer.svelte';
 	import { t } from '$lib/i18n';
+	import katex from 'katex';
+
+	function renderMath(text: string, isBlock: boolean): string {
+		try {
+			return katex.renderToString(text, {
+				displayMode: isBlock,
+				throwOnError: false
+			});
+		} catch (err) {
+			return text;
+		}
+	}
 
 	interface Props {
 		tokens: Token[];
@@ -21,6 +33,10 @@
 		</svelte:element>
 	{:else if token.type === 'paragraph'}
 		<p><InlineRenderer items={(token as Tokens.Paragraph).tokens} /></p>
+	{:else if token.type === 'blockMath'}
+		<div class="overflow-x-auto max-w-full my-3 py-2 text-center bg-gray-50/30 dark:bg-white/[0.01] rounded">
+			{@html renderMath((token as any).text, true)}
+		</div>
 	{:else if token.type === 'code'}
 		{#if (token as Tokens.Code).lang === 'mermaid'}
 			<MermaidBlock code={(token as Tokens.Code).text} />

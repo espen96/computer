@@ -24,19 +24,26 @@ class StdioMCPManager:
     async def get_client(
         self,
         server_id: str,
-        command: str,
+        command: str = "",
         args: list[str] | None = None,
         env: dict[str, str] | None = None,
         cwd: str | None = None,
+        *,
+        server_type: str = "mcp_stdio",
+        url: str = "",
+        headers: dict | None = None,
     ) -> MCPClient:
-        """Get an existing client or spawn a new stdio MCP process.
+        """Get an existing client or connect/spawn a new MCP session.
 
         Args:
             server_id: Unique identifier for the server config.
-            command: The executable to run.
-            args: Command line arguments.
-            env: Optional environment variables.
-            cwd: Optional working directory.
+            command: The executable to run (for stdio).
+            args: Command line arguments (for stdio).
+            env: Optional environment variables (for stdio).
+            cwd: Optional working directory (for stdio).
+            server_type: "mcp" (HTTP/SSE) or "mcp_stdio" (stdio).
+            url: The server's Streamable HTTP endpoint URL (for SSE).
+            headers: Optional HTTP headers (for SSE).
 
         Returns:
             A connected MCPClient with an active session.
@@ -46,29 +53,36 @@ class StdioMCPManager:
             if client.session is not None:
                 return client
             # Session dead — clean up and reconnect
-            logger.info("[mcp-stdio] Process for '%s' died, reconnecting", server_id)
+            logger.info("[mcp] Connection/Process for '%s' died, reconnecting", server_id)
             await self._safe_disconnect(client)
             del self._instances[server_id]
 
         client = MCPClient()
-        await client.connect_stdio(command, args, env, cwd)
+        if server_type == "mcp":
+            await client.connect(url, headers)
+            logger.info("[mcp] Connected to SSE server for '%s'", server_id)
+        elif server_type == "mcp_stdio":
+            await client.connect_stdio(command, args, env, cwd)
+            logger.info("[mcp] Spawned process for '%s'", server_id)
+        else:
+            raise ValueError(f"Unknown server type: {server_type}")
+
         self._instances[server_id] = client
-        logger.info("[mcp-stdio] Spawned process for '%s'", server_id)
         return client
 
     async def disconnect(self, server_id: str) -> None:
-        """Disconnect and kill a specific server's process."""
+        """Disconnect and kill a specific server's process/session."""
         client = self._instances.pop(server_id, None)
         if client:
             await self._safe_disconnect(client)
-            logger.info("[mcp-stdio] Disconnected '%s'", server_id)
+            logger.info("[mcp] Disconnected '%s'", server_id)
 
     async def disconnect_all(self) -> None:
-        """Shut down all stdio server processes (called on app shutdown)."""
+        """Shut down all stdio server processes and SSE sessions (called on app shutdown)."""
         ids = list(self._instances.keys())
         for sid in ids:
             await self.disconnect(sid)
-        logger.info("[mcp-stdio] All stdio servers disconnected")
+        logger.info("[mcp] All MCP servers disconnected")
 
     def list_active(self) -> list[str]:
         """Return IDs of servers with active connections."""
@@ -82,8 +96,9 @@ class StdioMCPManager:
         try:
             await client.disconnect()
         except Exception:
-            logger.debug("[mcp-stdio] Error during disconnect", exc_info=True)
+            logger.debug("[mcp] Error during disconnect", exc_info=True)
 
 
 # Module-level singleton
 stdio_manager = StdioMCPManager()
+mcp_manager = stdio_manager

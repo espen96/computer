@@ -5,12 +5,16 @@
 		workspaceList,
 		currentWorkspace,
 		removeWorkspace,
+		renameWorkspace,
 		reorderWorkspaces,
 		sidebarOpen,
 		sidebarWidth,
 		appVersion,
 		showChangelog,
-		showSearch
+		showSearch,
+		chatList,
+		renameChat,
+		loadChatList,
 	} from '$lib/stores';
 	import Sortable from 'sortablejs';
 	import Icon from './Icon.svelte';
@@ -140,6 +144,9 @@
 		for (const path of expandedWorkspaces) {
 			fetchWorkspaceChats(path);
 		}
+
+		// Also reload the chat list so chat-mode titles update in real-time
+		loadChatList();
 	}
 
 	const MIN_WIDTH = 160;
@@ -205,6 +212,124 @@
 		wsMenuAnchor = null;
 	}
 
+	// ── Workspace rename ───────────────────────────────────────────
+	let renamingPath = $state<string | null>(null);
+	let renameValue = $state('');
+	let renameInputEl: HTMLInputElement | undefined = $state();
+
+	// ── Chat-mode workspace rename ────────────────────────────────
+	let renamingChatPath = $state<string | null>(null);
+	let renameChatValue = $state('');
+	let renameChatInputEl: HTMLInputElement | undefined = $state();
+	let chatMenuPath = $state<string | null>(null);
+	let chatMenuAnchor = $state<HTMLElement | null>(null);
+
+	// ── Workspace expand chat menu ────────────────────────────────
+	let wsChatMenuId = $state<string | null>(null);
+	let wsChatMenuAnchor = $state<HTMLElement | null>(null);
+	let wsChatMenuPath = $state<string | null>(null);
+
+	$effect(() => {
+		if (renamingPath && renameInputEl) {
+			requestAnimationFrame(() => {
+				renameInputEl?.focus();
+				renameInputEl?.select();
+			});
+		}
+	});
+
+	function startRename(path: string, currentName: string) {
+		renamingPath = path;
+		renameValue = currentName;
+		closeWsMenu();
+	}
+
+	async function commitRename() {
+		const path = renamingPath;
+		const val = renameValue.trim();
+		renamingPath = null;
+		if (!path || !val) return;
+		await renameWorkspace(path, val);
+	}
+
+	function cancelRename() {
+		renamingPath = null;
+	}
+
+	// ── Chat-mode workspace rename ────────────────────────────────
+
+	$effect(() => {
+		if (renamingChatPath && renameChatInputEl) {
+			requestAnimationFrame(() => {
+				renameChatInputEl?.focus();
+				renameChatInputEl?.select();
+			});
+		}
+	});
+
+	function openChatMenu(e: MouseEvent, path: string) {
+		e.stopPropagation();
+		e.preventDefault();
+		chatMenuAnchor = e.currentTarget as HTMLElement;
+		chatMenuPath = path;
+	}
+
+	function closeChatMenu() {
+		chatMenuPath = null;
+		chatMenuAnchor = null;
+	}
+
+	// ── Workspace expand chat menu ────────────────────────────────
+
+	function openWsChatMenu(e: MouseEvent, chatId: string, wsPath: string) {
+		e.stopPropagation();
+		e.preventDefault();
+		wsChatMenuAnchor = e.currentTarget as HTMLElement;
+		wsChatMenuId = chatId;
+		wsChatMenuPath = wsPath;
+	}
+
+	function closeWsChatMenu() {
+		wsChatMenuId = null;
+		wsChatMenuAnchor = null;
+		wsChatMenuPath = null;
+	}
+
+	async function handleDeleteWsChat(chatId: string) {
+		closeWsChatMenu();
+		const { deleteChat } = await import('$lib/apis/chat');
+		await deleteChat(chatId);
+		// Refresh the workspace chat cache
+		if (wsChatMenuPath) {
+			fetchWorkspaceChats(wsChatMenuPath);
+		}
+	}
+
+	function startRenameChat(path: string, currentName: string) {
+		renamingChatPath = path;
+		renameChatValue = currentName;
+		closeChatMenu();
+	}
+
+	async function commitRenameChat() {
+		const path = renamingChatPath;
+		const val = renameChatValue.trim();
+		renamingChatPath = null;
+		if (!path || !val) return;
+		// Extract chat ID from workspace path (format: {root}/{chat_id})
+		const chatId = path.split(/[/\\]/).pop() || '';
+		await renameChat(chatId, val);
+	}
+
+	function cancelRenameChat() {
+		renamingChatPath = null;
+	}
+
+	async function handleDeleteChatMode(chatPath: string) {
+		closeChatMenu();
+		await removeWorkspace(chatPath);
+	}
+
 	function closeSidebar() {
 		sidebarOpen.set(false);
 	}
@@ -224,6 +349,82 @@
 		// If we removed the workspace we're currently viewing, go home
 		if (currentPath === path) {
 			goto('/');
+		}
+	}
+
+	// ── Chat-mode workspace helpers ──────────────────────────────
+
+	interface ChatDateGroup {
+		label: string;
+		chats: typeof $chatList;
+	}
+
+	let expandedChatGroups = $state<Set<string>>(new Set(['today', 'yesterday', 'previous7Days', 'previous30Days', 'older']));
+
+	function toggleChatGroup(label: string) {
+		const next = new Set(expandedChatGroups);
+		if (next.has(label)) {
+			next.delete(label);
+		} else {
+			next.add(label);
+		}
+		expandedChatGroups = next;
+	}
+
+	function groupChatsByDate(chats: typeof $chatList): ChatDateGroup[] {
+		const now = new Date();
+		const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+		const yesterdayStart = todayStart - 86400000;
+		const weekStart = todayStart - 7 * 86400000;
+		const monthStart = todayStart - 30 * 86400000;
+
+		const groups: Record<string, typeof $chatList> = {
+			today: [],
+			yesterday: [],
+			previous7Days: [],
+			previous30Days: [],
+			older: []
+		};
+
+		for (const chat of chats) {
+			// Backend stores seconds, JS uses milliseconds
+			const ts = (chat.updated_at || chat.created_at) * 1000;
+			if (ts >= todayStart) {
+				groups.today.push(chat);
+			} else if (ts >= yesterdayStart) {
+				groups.yesterday.push(chat);
+			} else if (ts >= weekStart) {
+				groups.previous7Days.push(chat);
+			} else if (ts >= monthStart) {
+				groups.previous30Days.push(chat);
+			} else {
+				groups.older.push(chat);
+			}
+		}
+
+		const result: ChatDateGroup[] = [];
+		if (groups.today.length) result.push({ label: 'today', chats: groups.today });
+		if (groups.yesterday.length) result.push({ label: 'yesterday', chats: groups.yesterday });
+		if (groups.previous7Days.length) result.push({ label: 'previous7Days', chats: groups.previous7Days });
+		if (groups.previous30Days.length) result.push({ label: 'previous30Days', chats: groups.previous30Days });
+		if (groups.older.length) result.push({ label: 'older', chats: groups.older });
+		return result;
+	}
+
+	const chatDateGroups = $derived(groupChatsByDate($chatList));
+
+	function handleChatItemClick(chat: typeof $chatList[0]) {
+		goto(`/?workspace=${encodeURIComponent(chat.path)}`);
+		if (typeof window !== 'undefined' && window.innerWidth < 768) {
+			sidebarOpen.set(false);
+		}
+	}
+
+	function handleNewChatMode() {
+		// Navigate to home with a flag that triggers new chat creation
+		goto('/?newChat=1');
+		if (typeof window !== 'undefined' && window.innerWidth < 768) {
+			sidebarOpen.set(false);
 		}
 	}
 
@@ -331,6 +532,88 @@
 			</div>
 		{/if}
 
+		<!-- Chats section header -->
+		{#if $chatEnabled}
+		<div class="flex items-center justify-between h-8 pl-3.5 pr-1.5 shrink-0">
+			<span class="text-xs text-gray-400 dark:text-gray-500">{$t('sidebar.chats')}</span>
+			<button
+				class="flex items-center justify-center w-7 h-7 rounded-lg text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors duration-100"
+				onclick={handleNewChatMode}
+				aria-label={$t('sidebar.newChat')}
+				use:tooltip={$t('sidebar.newChat')}
+			>
+				<Icon name="plus" size={14} />
+			</button>
+		</div>
+
+		<!-- Chat list -->
+		<div class="overflow-y-auto px-1.5 max-h-[40%]">
+			{#if $chatList.length === 0}
+				<div class="flex flex-col items-center justify-center py-8">
+					<p class="text-xs text-gray-400 dark:text-gray-600">{$t('sidebar.noChats')}</p>
+				</div>
+			{:else}
+				{#each chatDateGroups as group (group.label)}
+					<div class="mb-1">
+						<button
+							class="flex items-center gap-1 w-full h-6 px-2 text-[10px] font-medium text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors duration-75 uppercase tracking-wider"
+							onclick={() => toggleChatGroup(group.label)}
+						>
+							<span
+								class="inline-block transition-transform duration-150"
+								style="transform: rotate({expandedChatGroups.has(group.label) ? '90deg' : '0deg'})"
+							>
+								<Icon name="chevron-right" size={9} />
+							</span>
+							{$t(`sidebar.chatGroup.${group.label}`)}
+							<span class="text-gray-300 dark:text-gray-700 font-normal normal-case ml-0.5">{group.chats.length}</span>
+						</button>
+						{#if expandedChatGroups.has(group.label)}
+							{#each group.chats as chat (chat.path)}
+								<div
+									class="group flex items-center gap-1.5 w-full h-7 px-2 rounded-md cursor-pointer transition-colors duration-75
+										hover:bg-gray-50 dark:hover:bg-white/3
+										{chat.path === currentPath ? 'bg-gray-200/50 dark:bg-white/8' : ''}"
+									role="button"
+									tabindex="0"
+									onclick={() => handleChatItemClick(chat)}
+									onkeydown={(e) => { if (e.key === 'Enter') handleChatItemClick(chat); }}
+								>
+									{#if renamingChatPath === chat.path}
+										<input
+											bind:this={renameChatInputEl}
+											bind:value={renameChatValue}
+											type="text"
+											class="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-gray-900 dark:text-white"
+											onclick={(e) => e.stopPropagation()}
+											onkeydown={(e) => {
+												if (e.key === 'Enter') { e.preventDefault(); commitRenameChat(); }
+												if (e.key === 'Escape') { e.preventDefault(); cancelRenameChat(); }
+											}}
+											onblur={commitRenameChat}
+											spellcheck="false"
+										/>
+									{:else}
+										<span class="flex-1 text-xs text-gray-500 dark:text-gray-500 truncate min-w-0">{chat.name}</span>
+									{/if}
+									<span
+										class="flex items-center justify-center w-4 h-4 shrink-0 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-75"
+										role="button"
+										tabindex="-1"
+										onclick={(e) => openChatMenu(e, chat.path)}
+										aria-label={$t('a11y.chatOptions')}
+									>
+										<Icon name="three-dots" size={11} />
+									</span>
+								</div>
+							{/each}
+						{/if}
+					</div>
+				{/each}
+			{/if}
+		</div>
+		{/if}
+
 		<!-- Workspace section header -->
 		<div class="flex items-center justify-between h-8 pl-3.5 pr-1.5 shrink-0">
 			<span class="text-xs text-gray-400 dark:text-gray-500">{$t('sidebar.workspaces')}</span>
@@ -386,9 +669,25 @@
 							{:else}
 								<Icon name="folder" size={14} />
 							{/if}
-							<span class="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap"
-								>{ws.name}</span
-							>
+							{#if renamingPath === ws.path}
+								<input
+									bind:this={renameInputEl}
+									bind:value={renameValue}
+									type="text"
+									class="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-gray-900 dark:text-white"
+									onclick={(e) => e.stopPropagation()}
+									onkeydown={(e) => {
+										if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+										if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+									}}
+									onblur={commitRename}
+									spellcheck="false"
+								/>
+							{:else}
+								<span class="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap"
+									>{ws.name}</span
+								>
+							{/if}
 						</a>
 						<span
 							class="flex items-center justify-center w-4 h-4 shrink-0 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-75"
@@ -427,6 +726,7 @@
 									<ChatItem
 										{chat}
 										onclick={() => handleSidebarChatClick(chat.id, ws.path, chat.title)}
+										onmenu={(e) => openWsChatMenu(e, chat.id, ws.path)}
 									/>
 								{/each}
 								<button class="ws-chat-show-more" onclick={() => handleShowMoreChats(ws.path)}>
@@ -519,12 +819,56 @@
 		anchor={wsMenuAnchor}
 		items={[
 			{
+				label: $t('sidebar.rename'),
+				icon: 'pencil',
+				onclick: () => {
+					const ws = $workspaceList.find((w) => w.path === wsMenuPath);
+					if (ws) startRename(ws.path, ws.name);
+				}
+			},
+			{
 				label: $t('sidebar.remove'),
 				icon: 'xmark',
 				onclick: () => handleRemoveWorkspace(wsMenuPath!)
 			}
 		]}
 		onclose={closeWsMenu}
+	/>
+{/if}
+
+{#if chatMenuPath && chatMenuAnchor}
+	<DropdownMenu
+		anchor={chatMenuAnchor}
+		items={[
+			{
+				label: $t('sidebar.rename'),
+				icon: 'pencil',
+				onclick: () => {
+					const chat = $chatList.find((c) => c.path === chatMenuPath);
+					if (chat) startRenameChat(chat.path, chat.name);
+				}
+			},
+			{
+				label: $t('sidebar.remove'),
+				icon: 'xmark',
+				onclick: () => handleDeleteChatMode(chatMenuPath!)
+			}
+		]}
+		onclose={closeChatMenu}
+	/>
+{/if}
+
+{#if wsChatMenuId && wsChatMenuAnchor}
+	<DropdownMenu
+		anchor={wsChatMenuAnchor}
+		items={[
+			{
+				label: $t('sidebar.remove'),
+				icon: 'xmark',
+				onclick: () => handleDeleteWsChat(wsChatMenuId!)
+			}
+		]}
+		onclose={closeWsChatMenu}
 	/>
 {/if}
 
@@ -556,7 +900,7 @@
 	}
 
 	:global(.dark) .sidebar {
-		background: #000;
+		background: #111111;
 		border-right-color: rgba(255, 255, 255, 0.06);
 	}
 

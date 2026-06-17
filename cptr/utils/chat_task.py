@@ -18,7 +18,7 @@ from cptr.env import CHAT_MAX_ITERATIONS, CHAT_TOOL_MAX_CHARS
 from cptr.utils.context import should_compact
 from cptr.utils.skills import discover_skills, load_skill, build_catalog_xml, format_skill_content
 from cptr.utils.summarize import summarize_messages
-from cptr.models import Chat, ChatMessage, Config
+from cptr.models import Chat, ChatMessage, Config, Workspace
 from cptr.socket.main import emit_to_user
 from cptr.utils.ai import (
     ChatCompletionForm,
@@ -332,6 +332,24 @@ DEFAULT_SYSTEM_PROMPT = (
     "\nFiles:\n{{FILE_TREE}}"
 )
 
+DEFAULT_CHAT_SYSTEM_PROMPT = (
+    "You are an assistant with access to a sandboxed workspace environment. "
+    "You can read, search, and create files — and the user has direct access to the "
+    "same workspace, so you can collaborate by writing documents, generating artifacts, "
+    "organizing information, or building anything the user can then open and use.\n\n"
+    "Think of yourself as a capable partner who happens to have a filesystem at your "
+    "fingertips — not a programmer, but an assistant with a powerful toolbox.\n\n"
+    "For complex tasks, lay out a plan first and wait for the user's input before diving in."
+
+
+    "\n\n{{INSTRUCTIONS}}"
+    "\n\n{{SKILLS}}"
+    "\n\Date: {{DATE}}"
+    "\n\nWorkspace: {{WORKSPACE_NAME}}"
+    "\n\OS: {{OS}}"
+    "\nFiles:\n{{FILE_TREE}}"
+)
+
 
 def _render_template(template: str, variables: dict[str, str]) -> str:
     """Render {{VARIABLE}} placeholders in a template string.
@@ -427,7 +445,8 @@ async def _load_system_prompt(workspace: str, model: str = "") -> str:
 
     # 4. Hardcoded fallback
     if template is None:
-        template = DEFAULT_SYSTEM_PROMPT
+        is_chat = "chat-workspaces" in workspace
+        template = DEFAULT_CHAT_SYSTEM_PROMPT if is_chat else DEFAULT_SYSTEM_PROMPT
 
     # Render template variables
     variables = _build_template_variables(workspace, model)
@@ -505,6 +524,14 @@ async def generate_chat_title(
 
         # Persist and notify
         await Chat.update_title(chat_id, title, now_ms())
+
+        # Sync workspace name for chat-mode workspaces
+        chat_obj = await Chat.get_by_id(chat_id)
+        if chat_obj and chat_obj.meta:
+            workspace = chat_obj.meta.get("workspace", "")
+            if workspace:
+                await Workspace.rename(user_id, workspace, title)
+
         await emit_to_user(user_id, {"chat_id": chat_id, "title": title})
         logger.info("[title] Generated title for chat %s: %s", chat_id[:8], title)
 

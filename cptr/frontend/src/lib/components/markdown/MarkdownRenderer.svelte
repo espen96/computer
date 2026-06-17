@@ -10,8 +10,49 @@
 	 * Styled entirely via Tailwind prose. No custom CSS.
 	 */
 
-	import { Lexer } from 'marked';
+	import { marked, Lexer } from 'marked';
 	import BlockRenderer from './BlockRenderer.svelte';
+
+	// Register KaTeX extensions for marked
+	const blockMath = {
+		name: 'blockMath',
+		level: 'block',
+		start(src: string) {
+			return src.indexOf('$$');
+		},
+		tokenizer(src: string) {
+			const match = src.match(/^\$\$\n?([\s\S]+?)\n?\$\$/);
+			if (match) {
+				return {
+					type: 'blockMath',
+					raw: match[0],
+					text: match[1]
+				};
+			}
+		}
+	};
+
+	const inlineMath = {
+		name: 'inlineMath',
+		level: 'inline',
+		start(src: string) {
+			return src.indexOf('$');
+		},
+		tokenizer(src: string) {
+			const match = src.match(/^\$([^\$\s](?:[^\$]*?[^\$\s])?)\$/);
+			if (match) {
+				return {
+					type: 'inlineMath',
+					raw: match[0],
+					text: match[1]
+				};
+			}
+		}
+	};
+
+	marked.use({
+		extensions: [blockMath as any, inlineMath as any]
+	});
 
 	interface Props {
 		content: string;

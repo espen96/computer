@@ -174,3 +174,11 @@ export const verifyToolServer = (id: string) =>
 		`/api/admin/tools/servers/${id}/verify`,
 		{ method: 'POST' }
 	);
+
+// ── Chat workspace root ──────────────────────────────────
+
+export const getChatWorkspaceRoot = () =>
+	fetchJSON<{ path: string; default: string }>('/api/admin/chat/workspace-root');
+
+export const setChatWorkspaceRoot = (path: string) =>
+	fetchJSON<{ ok: boolean; path: string }>('/api/admin/chat/workspace-root', jsonBody({ path }));

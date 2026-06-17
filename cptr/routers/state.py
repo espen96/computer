@@ -8,13 +8,16 @@ Three layers:
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 
 from fastapi import APIRouter, Request, Query
+from sqlalchemy import select
 from cptr.env import DATA_DIR
 from cptr.models import UserStates, Workspace
 from cptr.utils.config import get_or_create_user
+from cptr.utils.db import get_db
 
 router = APIRouter(prefix="/api/state", tags=["state"])
 
@@ -50,6 +53,18 @@ async def put_preferences(request: Request):
         return {"status": "skipped"}
     body = await request.json()
     await UserStates.save_data(user_id, body)
+    return {"status": "saved"}
+
+
+@router.patch("/workspace/name")
+async def patch_workspace_name(
+    request: Request, path: str = Query(...), name: str = Query(...)
+):
+    """Update just the display name of a workspace."""
+    user_id = await _get_user_id(request)
+    if not user_id:
+        return {"status": "skipped"}
+    await Workspace.rename(user_id, path, name)
     return {"status": "saved"}
 
 
@@ -101,12 +116,47 @@ async def put_workspace(request: Request, path: str = Query(...)):
 
 @router.delete("/workspace")
 async def delete_workspace(request: Request, path: str = Query(...)):
-    """Remove a workspace."""
+    """Remove a workspace. If it's a chat workspace, also clean up chat data."""
     user_id = await _get_user_id(request)
     if not user_id:
         return {"status": "skipped"}
+
+    ws = await Workspace.get_by_path(user_id, path)
+    if ws and ws.is_chat:
+        # Delete chat and messages associated with this workspace
+        from cptr.models import Chat, ChatMessage
+        import shutil
+
+        async with await get_db() as db:
+            chats = (await db.execute(
+                select(Chat).where(Chat.user_id == user_id)
+            )).scalars().all()
+            for chat in chats:
+                meta = chat.meta or {}
+                if meta.get("workspace") == path:
+                    # Delete messages
+                    await Chat.delete(chat.id)
+                    # Delete workspace filesystem
+                    await asyncio.to_thread(shutil.rmtree, path, True)
+
     await Workspace.delete_by_path(user_id, path)
     return {"status": "deleted"}
+
+
+# ── Chat workspaces ─────────────────────────────────────────
+
+
+@router.get("/chats")
+async def get_chat_workspaces(request: Request):
+    """Return list of all chat-mode workspaces for the sidebar."""
+    user_id = await _get_user_id(request)
+    if not user_id:
+        return []
+    workspaces = await Workspace.get_chat_workspaces(user_id)
+    return [
+        {"path": ws.path, "name": ws.name, "created_at": ws.created_at, "updated_at": ws.updated_at}
+        for ws in workspaces
+    ]
 
 
 # ── Welcome ──────────────────────────────────────────────────────

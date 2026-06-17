@@ -10,10 +10,11 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from cptr.models import Chat, ChatMessage, Config
+from cptr.models import Chat, ChatMessage, Config, Workspace
 from cptr.utils.config import check_access, now_ms, _get_jwt_secret
 from cptr.utils.crypto import decrypt_key
 from cptr.utils.workspace import ensure_cptr_gitignored
+from cptr.env import DATA_DIR
 
 log = logging.getLogger(__name__)
 
@@ -391,8 +392,44 @@ async def delete_chat(chat_id: str, request: Request):
         marker = Path(workspace) / ".cptr" / "chats" / f"{chat_id}.json"
         await asyncio.to_thread(marker.unlink, True)  # missing_ok=True
 
+        # If this is a chat-mode workspace, delete the workspace row and filesystem
+        ws = await Workspace.get_by_path(user_id, workspace)
+        if ws and ws.is_chat:
+            await Workspace.delete_by_path(user_id, workspace)
+            import shutil
+            await asyncio.to_thread(shutil.rmtree, workspace, True)
+
     await Chat.delete(chat_id)
     return {"ok": True}
+
+
+# ── Rename a chat ───────────────────────────────────────────
+
+
+@router.patch("/{chat_id}/title")
+async def rename_chat(chat_id: str, request: Request):
+    """Update a chat's title. Also syncs the workspace name for chat-mode workspaces."""
+    user_id = _get_user(request)
+    chat = await Chat.get_by_id(chat_id)
+    if not chat or chat.user_id != user_id:
+        raise HTTPException(404, "chat not found")
+
+    body = await request.json()
+    title = (body.get("title") or "").strip()
+    if not title:
+        raise HTTPException(400, "title is required")
+
+    now = now_ms()
+    await Chat.update_title(chat_id, title, now)
+
+    # Sync workspace name for chat-mode workspaces
+    workspace = chat.meta.get("workspace", "") if chat.meta else ""
+    if workspace:
+        await Workspace.rename(user_id, workspace, title)
+
+    from cptr.socket.main import emit_to_user
+    await emit_to_user(user_id, {"chat_id": chat_id, "title": title})
+    return {"ok": True, "title": title}
 
 
 # ── Send a message ──────────────────────────────────────────
@@ -407,6 +444,11 @@ class SendMessageRequest(BaseModel):
     regeneration_prompt: Optional[str] = None
     files: List[dict] = []
     params: dict = {}
+    chat_mode: bool = False
+
+
+class CompactRequest(BaseModel):
+    model_id: str
 
 
 class CompactRequest(BaseModel):
@@ -433,18 +475,31 @@ async def send_message(body: SendMessageRequest, request: Request):
             await Chat.update_meta(chat.id, chat.meta)
     else:
         title = body.content[:50].strip() or "New Chat"
+
+        # For chat mode, determine workspace path after chat creation
+        workspace_path = body.workspace
         chat = await Chat.create(
             user_id=user_id,
             title=title,
-            meta={"workspace": body.workspace, "params": body.params},
+            meta={"workspace": workspace_path, "params": body.params},
             created_at=now_ms(),
         )
+
+        # Chat mode: auto-generate workspace under configured root
+        if body.chat_mode:
+            chat_root = await Config.get("chat.workspace_root") or str(DATA_DIR / "chat-workspaces")
+            workspace_path = str(Path(chat_root) / chat.id)
+            chat.meta["workspace"] = workspace_path
+            await Chat.update_meta(chat.id, chat.meta)
+            await asyncio.to_thread(lambda: Path(workspace_path).mkdir(parents=True, exist_ok=True))
+            await Workspace.upsert_chat(user_id, workspace_path, title)
+
         # Ensure .cptr/chats/ dir exists
-        chats_dir = Path(body.workspace) / ".cptr" / "chats"
+        chats_dir = Path(workspace_path) / ".cptr" / "chats"
         await asyncio.to_thread(lambda: chats_dir.mkdir(parents=True, exist_ok=True))
 
         # Auto-add .cptr to .gitignore if this is a git repo
-        await asyncio.to_thread(ensure_cptr_gitignored, body.workspace)
+        await asyncio.to_thread(ensure_cptr_gitignored, workspace_path)
 
     # Check if the chat has an in-progress assistant message.
     # If so, queue this message instead of starting a new task.
@@ -515,7 +570,7 @@ async def send_message(body: SendMessageRequest, request: Request):
         chat_id=chat.id,
         user_id=user_id,
         connection=connection,
-        workspace=body.workspace,
+        workspace=(chat.meta or {}).get("workspace", body.workspace),
         model=bare_model,
         regeneration_prompt=body.regeneration_prompt,
     )
@@ -529,6 +584,11 @@ async def send_message(body: SendMessageRequest, request: Request):
     }
     if parent_msg is None or parent_msg.role != "user":
         resp["user_message"] = _message_dict(user_msg)
+    # Include workspace path for chat mode so frontend can navigate
+    if body.chat_mode and not body.chat_id:
+        ws_path = (chat.meta or {}).get("workspace", body.workspace)
+        resp["workspace"] = ws_path
+        resp["workspace_name"] = chat.title or "New Chat"
     return resp
 
 
