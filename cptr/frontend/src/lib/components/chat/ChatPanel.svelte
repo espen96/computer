@@ -1260,7 +1260,7 @@
 	}
 </script>
 
-<div class="flex flex-col h-full bg-white dark:bg-black">
+<div class="flex flex-col h-full bg-white dark:bg-gray-900">
 	{#if isLanding}
 		<!-- Landing: input + recent chats -->
 		<div class="flex-1 overflow-y-auto flex flex-col">

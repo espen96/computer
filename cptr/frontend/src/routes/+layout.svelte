@@ -324,7 +324,7 @@
 	<SetupWizard oncomplete={() => { showSetup = false; }} />
 {:else if $stateLoaded}
 	<div
-		class="h-screen max-h-[100dvh] flex overflow-hidden font-sans antialiased text-gray-900 bg-white dark:text-gray-100 dark:bg-black"
+		class="h-screen max-h-[100dvh] flex overflow-hidden font-sans antialiased text-gray-100 bg-white dark:text-gray-100 dark:bg-gray-900"
 	>
 		<Sidebar />
 

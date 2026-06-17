@@ -549,7 +549,7 @@
 	}
 
 	:global(.dark) .sidebar {
-		background: #000;
+		background: #111111;
 		border-right-color: rgba(255, 255, 255, 0.06);
 	}
 
