@@ -33,6 +33,12 @@
 		maxHeight?: string;
 		/** Optional header snippet rendered above items (e.g. search input). */
 		header?: Snippet;
+		/** Optional footer snippet rendered below items (e.g. pinned actions). */
+		footer?: Snippet;
+		/** Show a divider after the header. */
+		headerDivider?: boolean;
+		/** Show a divider before the footer. */
+		footerDivider?: boolean;
 		/** Optional snippet rendered when items array is empty. */
 		empty?: Snippet;
 		/** Additional CSS classes for the menu container. */
@@ -51,6 +57,9 @@
 		inlineAbove = false,
 		maxHeight,
 		header,
+		footer,
+		headerDivider = true,
+		footerDivider = true,
 		empty,
 		className = '',
 		align = 'start'
@@ -120,15 +129,7 @@
 		}
 
 		const rect = anchor.getBoundingClientRect();
-		return [
-			rect.left,
-			rect.top,
-			rect.right,
-			rect.bottom,
-			rect.width,
-			rect.height,
-			viewportState()
-		]
+		return [rect.left, rect.top, rect.right, rect.bottom, rect.width, rect.height, viewportState()]
 			.map((value) => (typeof value === 'number' ? value.toFixed(2) : value))
 			.join(':');
 	}
@@ -332,9 +333,9 @@
 		: 'fixed'} z-[1001] min-w-36 rounded-xl bg-white dark:bg-[#1a1a1a] border border-gray-150 dark:border-white/6 shadow-xl p-0.5 flex flex-col overflow-hidden {className}"
 	style="{inlineAbove
 		? ''
-		: `left: ${pos.x}px; ${pos.bottom != null ? `bottom: ${pos.bottom}px;` : `top: ${pos.top ?? -9999}px;`} ${menuMaxHeight
-				? `max-height: ${menuMaxHeight}px;`
-				: ''}`} {anchorWidth ? `width: ${anchorWidth}px;` : ''} opacity: {ready
+		: `left: ${pos.x}px; ${pos.bottom != null ? `bottom: ${pos.bottom}px;` : `top: ${pos.top ?? -9999}px;`} ${
+				menuMaxHeight ? `max-height: ${menuMaxHeight}px;` : ''
+			}`} {anchorWidth ? `width: ${anchorWidth}px;` : ''} opacity: {ready
 		? 1
 		: 0}; pointer-events: {ready ? 'auto' : 'none'};"
 	onclick={(e) => e.stopPropagation()}
@@ -343,7 +344,9 @@
 	{#if header}
 		<div class="flex-none">
 			{@render header()}
-			<div class="h-px bg-gray-100/50 dark:bg-white/3 mx-1 my-0.5"></div>
+			{#if headerDivider}
+				<div class="h-px bg-gray-100/50 dark:bg-white/3 mx-1 my-0.5"></div>
+			{/if}
 		</div>
 	{/if}
 
@@ -392,4 +395,13 @@
 			{/each}
 		{/if}
 	</div>
+
+	{#if footer}
+		<div class="flex-none">
+			{#if footerDivider}
+				<div class="h-px bg-gray-100/50 dark:bg-white/3 mx-1 my-0.5"></div>
+			{/if}
+			{@render footer()}
+		</div>
+	{/if}
 </div>

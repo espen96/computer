@@ -72,6 +72,9 @@ export const gitPush = (
 
 export const gitUncommit = (root: string) => fetchJSON('/api/git/uncommit', jsonBody({ root }));
 
+export const gitStash = (root: string, message?: string) =>
+	fetchJSON('/api/git/stash', jsonBody({ root, message }));
+
 export const createGitBranch = (root: string, name: string) =>
 	fetchJSON('/api/git/branch', jsonBody({ root, name }));
 

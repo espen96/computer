@@ -539,7 +539,7 @@ async def stash_list(root: str) -> list[dict[str, str]]:
 
 async def stash_save(root: str, message: str | None = None) -> dict[str, Any]:
     """Stash changes."""
-    args = ["stash", "push"]
+    args = ["stash", "push", "--include-untracked"]
     if message:
         args.extend(["-m", message])
     code, out, err = await _run(*args, cwd=root, check=False)
