@@ -22,7 +22,8 @@ import {
 	savePreferences,
 	getWorkspaceList,
 	getWorkspaceState,
-	saveWorkspaceState
+	saveWorkspaceState,
+	renameWorkspace as renameWorkspaceApi
 } from '$lib/apis/state';
 import { listSessions, createSession, deleteSession } from '$lib/apis/terminal';
 import { changeLocale, i18next } from '$lib/i18n';
@@ -102,12 +103,77 @@ function createDefaultGroup(): EditorGroup {
 	};
 }
 
+function createChatModeGroup(includeFiles = true): EditorGroup {
+	const chatTabId = nextId();
+	const tabs: Tab[] = [
+		{ id: chatTabId, type: 'chat', label: 'New Chat', path: `new-${Date.now()}`, permanent: true }
+	];
+	if (includeFiles) {
+		const filesTabId = nextId();
+		tabs.push({ id: filesTabId, type: 'files', label: 'Files', permanent: true });
+	}
+	return {
+		id: 'default',
+		tabs,
+		activeTabId: chatTabId
+	};
+}
+
+/** Ensure all required permanent tabs exist in a group, adding them if missing */
+function ensurePermanentTabs(group: EditorGroup, isChatMode: boolean): EditorGroup {
+	const requiredTypes: Array<{ type: Tab['type']; label: string; path?: string }> = [
+		{ type: 'files', label: 'Files' }
+	];
+	if (isChatMode) {
+		requiredTypes.unshift({ type: 'chat', label: 'New Chat', path: `new-${Date.now()}` });
+	}
+
+	const missingTypes = requiredTypes.filter(
+		(req) => !group.tabs.some((t) => t.type === req.type && t.permanent)
+	);
+
+	if (missingTypes.length === 0) return group;
+
+	const newTabs = [...group.tabs];
+	for (const missing of missingTypes) {
+		const id = nextId();
+		newTabs.unshift({
+			id,
+			type: missing.type,
+			label: missing.label,
+			path: missing.path,
+			permanent: true
+		});
+	}
+
+	return {
+		...group,
+		tabs: newTabs,
+		activeTabId: group.activeTabId || newTabs[0].id
+	};
+}
+
 function createDefaultWorkspace(path: string): WorkspaceState {
 	const name = path.split('/').filter(Boolean).pop() || path;
 	return {
 		name,
 		path,
 		groups: [createDefaultGroup()],
+		activeGroupId: 'default',
+		splitDirection: 'horizontal',
+		splitRatio: 0.5,
+		fileBrowserCwd: path
+	};
+}
+
+export function createChatModeWorkspace(path: string): WorkspaceState {
+	const name = path.split('/').filter(Boolean).pop() || path;
+	const group = createChatModeGroup();
+	chatModeTabs.update((s) => new Set([...s, group.activeTabId]));
+	return {
+		name,
+		path,
+		groups: [group],
 		activeGroupId: 'default',
 		splitDirection: 'horizontal',
 		splitRatio: 0.5,
@@ -177,6 +243,12 @@ export const pwaPreferences = writable<PwaPreferences>(defaultPwaPreferences);
 
 /** Saved workspace path order for sidebar drag-reorder. */
 export const workspaceOrder = writable<string[]>([]);
+
+/** List of chat-mode workspaces for the sidebar. */
+export const chatList = writable<{ path: string; name: string; created_at: number; updated_at: number }[]>([]);
+
+/** Set of tab IDs that are in chat mode (auto-generated workspace). */
+export const chatModeTabs = writable<Set<string>>(new Set());
 
 // ── Derived stores ──────────────────────────────────────────────
 
@@ -415,6 +487,18 @@ export async function loadWorkspaceList(): Promise<void> {
 	}
 }
 
+// ── Load chat-mode workspaces (called once at app startup) ─────
+
+export async function loadChatList(): Promise<void> {
+	try {
+		const { getChatWorkspaces } = await import('$lib/apis/state');
+		const list = await getChatWorkspaces();
+		chatList.set(list || []);
+	} catch {
+		chatList.set([]);
+	}
+}
+
 // ── Load a specific workspace (called when URL changes) ─────────
 
 export async function loadWorkspace(path: string): Promise<void> {
@@ -430,6 +514,7 @@ export async function loadWorkspace(path: string): Promise<void> {
 			} catch {}
 
 			const ws = wsData as unknown as WorkspaceState;
+			const isChatMode = ws.path.includes('chat-workspaces');
 
 			// Remove dead terminal tabs from all groups
 			const cleanedGroups = ws.groups
@@ -447,7 +532,8 @@ export async function loadWorkspace(path: string): Promise<void> {
 						activeTabId: activeStillExists ? g.activeTabId : (filteredTabs[0]?.id ?? 'files')
 					};
 				})
-				.filter((g) => g.tabs.length > 0);
+				.filter((g) => g.tabs.length > 0)
+				.map((g) => ensurePermanentTabs(g, isChatMode));
 
 			const groups = cleanedGroups.length > 0 ? cleanedGroups : [createDefaultGroup()];
 			const activeGroupId = groups.some((g) => g.id === ws.activeGroupId)
@@ -463,13 +549,22 @@ export async function loadWorkspace(path: string): Promise<void> {
 				splitRatio: ws.splitRatio ?? 0.5,
 				fileBrowserCwd: ws.fileBrowserCwd ?? path
 			});
+	} else {
+		// First time opening this workspace, create defaults
+		// Chat-mode workspaces get a chat tab instead of Files tab
+		const isChatMode = path.includes('chat-workspaces');
+		if (isChatMode) {
+			const ws = createChatModeWorkspace(path);
+			if (wsData?.name) ws.name = wsData.name as string;
+			currentWorkspace.set(ws);
 		} else {
-			// First time opening this workspace, create defaults
 			currentWorkspace.set(createDefaultWorkspace(path));
 		}
+	}
 	} catch {
 		// Error loading, create fresh workspace
-		currentWorkspace.set(createDefaultWorkspace(path));
+		const isChatMode = path.includes('chat-workspaces');
+		currentWorkspace.set(isChatMode ? createChatModeWorkspace(path) : createDefaultWorkspace(path));
 	}
 }
 
@@ -478,6 +573,7 @@ export async function loadWorkspace(path: string): Promise<void> {
 export async function initState(): Promise<void> {
 	await loadPreferences();
 	await loadWorkspaceList();
+	await loadChatList();
 	stateLoaded.set(true);
 	subscribeForPersistence();
 }
@@ -555,13 +651,13 @@ if (typeof BroadcastChannel !== 'undefined') {
  * (via goto() in the calling component), which triggers loadWorkspace().
  * The URL is the single source of truth for which workspace is active.
  */
-export function addWorkspace(path: string): void {
-	const name = path.split('/').filter(Boolean).pop() || path;
+export function addWorkspace(path: string, name?: string): void {
+	const displayName = name || path.split('/').filter(Boolean).pop() || path;
 
 	// Update workspace list for sidebar
 	workspaceList.update((list) => {
 		if (list.some((w) => w.path === path)) return list;
-		return [...list, { path, name }];
+		return [...list, { path, name: displayName }];
 	});
 
 	// Append to order
@@ -571,17 +667,60 @@ export function addWorkspace(path: string): void {
 	});
 }
 
+export async function renameWorkspace(path: string, newName: string): Promise<void> {
+	await renameWorkspaceApi(path, newName);
+	workspaceList.update((list) =>
+		list.map((w) => (w.path === path ? { ...w, name: newName } : w))
+	);
+	// Also update currentWorkspace if it's the active one
+	currentWorkspace.update((ws) => {
+		if (ws?.path === path) {
+			return { ...ws, name: newName };
+		}
+		return ws;
+	});
+}
+
 export async function removeWorkspace(path: string): Promise<void> {
 	const { deleteWorkspace: deleteWs } = await import('$lib/apis/state');
 	await deleteWs(path);
 	workspaceList.update((list) => list.filter((w) => w.path !== path));
 	workspaceOrder.update((order) => order.filter((p) => p !== path));
 
+	// If this was a chat workspace, refresh chat list
+	if (path.includes('chat-workspaces')) {
+		await loadChatList();
+	}
+
 	// If this was the current workspace, clear it
 	const ws = get(currentWorkspace);
 	if (ws?.path === path) {
 		currentWorkspace.set(null);
 	}
+}
+
+/** Remove a chat-mode workspace by chat ID. */
+export async function removeChatWorkspace(chatId: string): Promise<void> {
+	const { deleteChat } = await import('$lib/apis/chat');
+	await deleteChat(chatId);
+	// Reload the chat list to reflect the deletion
+	await loadChatList();
+}
+
+/** Rename a chat (updates both Chat.title and Workspace.name for chat-mode workspaces). */
+export async function renameChat(chatId: string, newTitle: string): Promise<void> {
+	const { renameChat: renameChatApi } = await import('$lib/apis/chat');
+	await renameChatApi(chatId, newTitle);
+	// Reload chat list to get updated names
+	await loadChatList();
+
+	// Also update currentWorkspace if it's the active one (prevents persistWorkspace from overwriting)
+	currentWorkspace.update((ws) => {
+		if (ws?.path?.endsWith(chatId)) {
+			return { ...ws, name: newTitle };
+		}
+		return ws;
+	});
 }
 
 /** Reorder workspaces in the sidebar (from drag-and-drop). */
@@ -800,6 +939,40 @@ export function openChatTab(chatId?: string, targetGroupId?: string): void {
 	}));
 }
 
+/** Open a new chat tab in chat mode (auto-generated workspace). */
+export function openChatModeTab(targetGroupId?: string): void {
+	const ws = get(currentWorkspace);
+	if (!ws) return;
+
+	const gid = targetGroupId ?? ws.activeGroupId;
+	const group = ws.groups.find((g) => g.id === gid);
+	if (!group) return;
+
+	// Reuse an existing new/pending chat tab if one is open
+	const existing = group.tabs.find(
+		(t) => t.type === 'chat' && (t.path?.startsWith('new-') || t.path?.startsWith('pending-'))
+	);
+	if (existing) {
+		setActiveTab(existing.id, gid);
+		chatModeTabs.update((s) => new Set([...s, existing.id]));
+		return;
+	}
+
+	const newTab: Tab = {
+		id: nextId(),
+		type: 'chat',
+		label: 'New Chat',
+		path: `new-${Date.now()}`
+	};
+
+	chatModeTabs.update((s) => new Set([...s, newTab.id]));
+
+	updateGroupTabs(gid, (tabs) => ({
+		tabs: [...tabs, newTab],
+		activeTabId: newTab.id
+	}));
+}
+
 export function closeTab(tabId: string, groupId?: string): void {
 	const ws = get(currentWorkspace);
 	if (!ws) return;
@@ -820,6 +993,11 @@ export function closeTab(tabId: string, groupId?: string): void {
 	// Clean up streaming indicator for closed chat tabs
 	if (tab.type === 'chat') {
 		streamingChatTabs.update((s) => {
+			const n = new Set(s);
+			n.delete(tabId);
+			return n;
+		});
+		chatModeTabs.update((s) => {
 			const n = new Set(s);
 			n.delete(tabId);
 			return n;
@@ -1039,7 +1217,24 @@ export function closeGroup(groupId: string): void {
 			});
 		}
 
+		// Before removing the group, migrate permanent tabs that don't exist elsewhere
 		let newGroups = ws.groups.filter((g) => g.id !== groupId);
+		if (group && newGroups.length > 0) {
+			const primaryGroup = newGroups[0];
+			const permanentTabs = group.tabs.filter((t) => t.permanent);
+			for (const permTab of permanentTabs) {
+				const existsElsewhere = newGroups.some((g) =>
+					g.tabs.some((t) => t.type === permTab.type && t.permanent)
+				);
+				if (!existsElsewhere) {
+					primaryGroup.tabs.push({ ...permTab });
+					if (!primaryGroup.activeTabId) {
+						primaryGroup.activeTabId = permTab.id;
+					}
+				}
+			}
+		}
+
 		if (newGroups.length === 0) {
 			newGroups = [createDefaultGroup()];
 		}
@@ -1094,4 +1289,16 @@ export function setSplitRatio(ratio: number): void {
 	currentWorkspace.update((ws) =>
 		ws ? { ...ws, splitRatio: Math.max(0.2, Math.min(0.8, ratio)) } : ws
 	);
+}
+
+/** Restore missing permanent tabs in all groups (safety mechanism) */
+export function restoreMissingPermanentTabs(): void {
+	currentWorkspace.update((ws) => {
+		if (!ws) return ws;
+		const isChatMode = ws.path.includes('chat-workspaces');
+		return {
+			...ws,
+			groups: ws.groups.map((g) => ensurePermanentTabs(g, isChatMode))
+		};
+	});
 }

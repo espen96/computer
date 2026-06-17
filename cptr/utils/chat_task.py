@@ -14,7 +14,7 @@ from cptr.env import CHAT_MAX_ITERATIONS, CHAT_TOOL_MAX_CHARS
 from cptr.utils.context import should_compact
 from cptr.utils.skills import discover_skills, load_skill, format_skill_content
 from cptr.utils.summarize import summarize_messages
-from cptr.models import Chat, ChatMessage, Config
+from cptr.models import Chat, ChatMessage, Config, Workspace
 from cptr.socket.main import emit_to_user
 from cptr.utils.ai import (
     ChatCompletionForm,
@@ -304,6 +304,216 @@ async def reconcile_chat_state():
         logger.info("[reconcile] Recovered %d chat(s) on startup", len(healed_chats))
 
 
+# ── System prompt ───────────────────────────────────────────
+
+
+def _get_file_tree(workspace: str, max_entries: int = 200) -> str:
+    """Generate a compact file tree listing for the workspace."""
+    ws = Path(workspace)
+    if not ws.is_dir():
+        return ""
+    ignore = {
+        ".git",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".next",
+        "build",
+        "dist",
+        ".cptr",
+        ".svelte-kit",
+        ".DS_Store",
+    }
+    entries = []
+    for item in sorted(ws.iterdir()):
+        if item.name in ignore:
+            continue
+        suffix = "/" if item.is_dir() else ""
+        entries.append(f"  {item.name}{suffix}")
+        if item.is_dir():
+            try:
+                for child in sorted(item.iterdir()):
+                    if child.name in ignore:
+                        continue
+                    csuffix = "/" if child.is_dir() else ""
+                    entries.append(f"    {child.name}{csuffix}")
+                    if len(entries) >= max_entries:
+                        entries.append("    ...")
+                        break
+            except PermissionError:
+                pass
+        if len(entries) >= max_entries:
+            break
+    return "\n".join(entries)
+
+
+INSTRUCTION_FILENAMES = ["MEMORY.md", "AGENTS.md", "AGENT.md", "CLAUDE.md"]
+
+
+def _load_instruction_files(workspace: str, max_bytes: int = 32_000) -> str:
+    """Load well-known AI instruction files from workspace root.
+
+    Scans for MEMORY.md, AGENTS.md, AGENT.md, CLAUDE.md.
+    All found files are concatenated (not first-found-wins).
+    """
+    ws = Path(workspace)
+    if not ws.is_dir():
+        return ""
+    parts: list[str] = []
+    total = 0
+    for name in INSTRUCTION_FILENAMES:
+        path = ws / name
+        if path.is_file():
+            remaining = max_bytes - total
+            if remaining <= 0:
+                break
+            try:
+                content = path.read_text(errors="replace")[:remaining].strip()
+            except OSError:
+                continue
+            if content:
+                parts.append(f"# {name}\n{content}")
+                total += len(content)
+                logger.debug("[instructions] Loaded %s (%d bytes)", name, len(content))
+    return "\n\n".join(parts)
+
+
+# ── Template engine ─────────────────────────────────────────
+
+_TEMPLATE_RE = re.compile(r"\{\{(\w+)\}\}")
+
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a helpful coding assistant. "
+    "You have access to tools to read, search, and modify files in the workspace. "
+    "Use them to help the user with their coding tasks."
+    "\n\n{{INSTRUCTIONS}}"
+    "\n\n{{SKILLS}}"
+    "\n\nWorkspace: {{WORKSPACE_NAME}}"
+    "\nFiles:\n{{FILE_TREE}}"
+)
+
+DEFAULT_CHAT_SYSTEM_PROMPT = (
+    "You are an assistant with access to a sandboxed workspace environment. "
+    "You can read, search, and create files — and the user has direct access to the "
+    "same workspace, so you can collaborate by writing documents, generating artifacts, "
+    "organizing information, or building anything the user can then open and use.\n\n"
+    "Think of yourself as a capable partner who happens to have a filesystem at your "
+    "fingertips — not a programmer, but an assistant with a powerful toolbox.\n\n"
+    "For complex tasks, lay out a plan first and wait for the user's input before diving in."
+
+
+    "\n\n{{INSTRUCTIONS}}"
+    "\n\n{{SKILLS}}"
+    "\n\Date: {{DATE}}"
+    "\n\nWorkspace: {{WORKSPACE_NAME}}"
+    "\n\OS: {{OS}}"
+    "\nFiles:\n{{FILE_TREE}}"
+)
+
+
+def _render_template(template: str, variables: dict[str, str]) -> str:
+    """Render {{VARIABLE}} placeholders in a template string.
+
+    - Known variables are substituted with their values.
+    - Unrecognized {{...}} tokens are left as-is.
+    - Cleans up excess blank lines left by empty variable substitutions.
+    """
+
+    def _replace(match: re.Match) -> str:
+        key = match.group(1)
+        if key in variables:
+            return variables[key]
+        return match.group(0)  # leave unrecognized tokens as-is
+
+    result = _TEMPLATE_RE.sub(_replace, template)
+    # Clean up triple+ blank lines left by empty substitutions
+    result = re.sub(r"\n{3,}", "\n\n", result)
+    return result.strip()
+
+
+def _build_template_variables(workspace: str, model: str = "") -> dict[str, str]:
+    """Build the dict of template variable values for the current context."""
+    ws_path = Path(workspace)
+
+    # Build instructions content
+    instructions = _load_instruction_files(workspace)
+    if instructions:
+        instructions_block = (
+            f"<instructions>\n{instructions}\n</instructions>"
+            "\n\nThe above <instructions> were loaded from instruction files in the workspace root. "
+            "These files persist across sessions. "
+            "You can update them with your file tools to save learnings, decisions, or "
+            "project conventions for future sessions."
+        )
+    else:
+        instructions_block = ""
+
+    # Build skills catalog
+    skills = discover_skills(workspace)
+    skills_block = build_catalog_xml(skills)
+
+    return {
+        "WORKSPACE_NAME": ws_path.name if ws_path.is_dir() else "",
+        "WORKSPACE_PATH": str(ws_path),
+        "FILE_TREE": _get_file_tree(workspace),
+        "INSTRUCTIONS": instructions_block,
+        "SKILLS": skills_block,
+        "OS": platform.system().replace("Darwin", "macOS"),
+        "DATE": date.today().isoformat(),
+        "MODEL": model,
+    }
+
+
+async def _load_system_prompt(workspace: str, model: str = "") -> str:
+    """Load system prompt with template variable rendering.
+
+    Resolution order (most specific wins):
+      1. .cptr/system.md in the workspace (file override)
+      2. Per-model system_prompt from chat.models config
+      3. Global (*) system_prompt from chat.models config
+      4. DEFAULT_SYSTEM_PROMPT constant (hardcoded fallback)
+
+    All sources support {{VARIABLE}} template substitution.
+    """
+    template = None
+
+    # 1. Workspace file override (.cptr/system.md)
+    ws_prompt = Path(workspace) / ".cptr" / "system.md"
+    if ws_prompt.is_file():
+        template = ws_prompt.read_text(errors="replace").strip()
+
+    # 2 & 3. Config-based prompts (per-model → global)
+    if template is None:
+        try:
+            chat_models_config = await Config.get("chat.models") or {}
+            # Per-model prompt
+            if model:
+                model_prompt = (
+                    chat_models_config.get(model, {}).get("params", {}).get("system_prompt")
+                )
+                if model_prompt:
+                    template = model_prompt
+            # Global prompt
+            if template is None:
+                global_prompt = (
+                    chat_models_config.get("*", {}).get("params", {}).get("system_prompt")
+                )
+                if global_prompt:
+                    template = global_prompt
+        except Exception:
+            logger.debug("[system_prompt] Failed to load from config", exc_info=True)
+
+    # 4. Hardcoded fallback
+    if template is None:
+        is_chat = "chat-workspaces" in workspace
+        template = DEFAULT_CHAT_SYSTEM_PROMPT if is_chat else DEFAULT_SYSTEM_PROMPT
+
+    # Render template variables
+    variables = _build_template_variables(workspace, model)
+    return _render_template(template, variables)
+
+
 VOICE_MODE_SYSTEM_PROMPT = (
     "You are in voice mode. Keep responses brief, conversational, and easy to hear aloud. "
     "Prefer one or two short paragraphs. Ask at most one focused follow-up question when needed. "
@@ -375,6 +585,14 @@ async def generate_chat_title(
 
         # Persist and notify
         await Chat.update_title(chat_id, title, now_ms())
+
+        # Sync workspace name for chat-mode workspaces
+        chat_obj = await Chat.get_by_id(chat_id)
+        if chat_obj and chat_obj.meta:
+            workspace = chat_obj.meta.get("workspace", "")
+            if workspace:
+                await Workspace.rename(user_id, workspace, title)
+
         await emit_to_user(user_id, {"chat_id": chat_id, "title": title})
         logger.info("[title] Generated title for chat %s: %s", chat_id[:8], title)
 

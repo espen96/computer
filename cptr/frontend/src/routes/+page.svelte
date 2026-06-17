@@ -12,11 +12,14 @@
 		openTabInSplit,
 		setSplitDirection,
 		openChatTab,
+		openChatModeTab,
 		openFileTab,
 		openTerminalTab,
 		setFileBrowserCwd,
+		createChatModeWorkspace,
 		appVersion,
 		showChangelog,
+		chatModeTabs,
 		showSearch,
 		pwaPreferences
 	} from '$lib/stores';
@@ -313,15 +316,42 @@
 		void handleIntent(intent);
 	}
 
+
+
+
+
 	$effect(() => {
-		const wsPath = $page.url.searchParams.get('workspace');
+		const url = $page.url;
+		const wsPath = url.searchParams.get('workspace');
+		const newChat = url.searchParams.get('newChat');
+
 		if (wsPath && wsPath !== lastLoadedPath) {
 			// New workspace — load then process intents
 			lastLoadedPath = wsPath;
-			loadWorkspace(wsPath).then(() => processIntentParams());
+			loadWorkspace(wsPath).then(() => {
+				processIntentParams();
+				// Handle ?newChat=1 after workspace is loaded
+				if (newChat) {
+					openChatModeTab();
+					// Clean up ?newChat from URL
+					const u = new URL(window.location.href);
+					u.searchParams.delete('newChat');
+					history.replaceState(history.state, '', u.pathname + u.search);
+				}
+			});
 		} else if (wsPath && wsPath === lastLoadedPath) {
 			// Same workspace — process intents immediately
 			processIntentParams();
+		} else if (!wsPath && newChat) {
+			// New chat from welcome page — create workspace in-memory, no server hit
+			const tempPath = `~/.cptr/chat-workspaces/temp-${Date.now()}`;
+			lastLoadedPath = tempPath;
+			currentWorkspace.set(createChatModeWorkspace(tempPath));
+			openChatModeTab();
+			// Clean up URL
+			const u = new URL(window.location.href);
+			u.searchParams.delete('newChat');
+			history.replaceState(history.state, '', u.pathname + u.search);
 		} else if (!wsPath) {
 			lastLoadedPath = null;
 			currentWorkspace.set(null);
@@ -714,6 +744,7 @@
 										? undefined
 										: tab.path}
 									tabId={tab.id}
+									chatMode={$chatModeTabs.has(tab.id)}
 								/>
 							</div>
 						{/each}

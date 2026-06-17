@@ -2138,11 +2138,15 @@ async def _load_tool_servers() -> dict:
                     }
 
             elif server_type == "mcp":
-                from cptr.utils.mcp.client import MCPClient
+                from cptr.utils.mcp.stdio_manager import stdio_manager
 
-                client = MCPClient()
                 headers = _build_server_headers(server)
-                await client.connect(server.get("url", ""), headers)
+                client = await stdio_manager.get_client(
+                    server_id=server_id,
+                    server_type="mcp",
+                    url=server.get("url", ""),
+                    headers=headers,
+                )
 
                 for spec in await client.list_tool_specs():
                     prefixed = f"{server_id}_{spec['name']}"
@@ -2152,8 +2156,6 @@ async def _load_tool_servers() -> dict:
                         "original_name": spec["name"],
                         "type": "mcp",
                     }
-
-                await client.disconnect()
 
             elif server_type == "mcp_stdio":
                 from cptr.utils.mcp.stdio_manager import stdio_manager
@@ -2247,15 +2249,16 @@ async def _execute_external_tool(name: str, args: dict) -> str:
 
     try:
         if tool_type == "mcp":
-            from cptr.utils.mcp.client import MCPClient
+            from cptr.utils.mcp.stdio_manager import stdio_manager
 
-            client = MCPClient()
-            await client.connect(server.get("url", ""), headers)
-            try:
-                result = await client.call_tool(original_name, args)
-                return _extract_mcp_result(result)
-            finally:
-                await client.disconnect()
+            client = await stdio_manager.get_client(
+                server_id=server.get("id", ""),
+                server_type="mcp",
+                url=server.get("url", ""),
+                headers=headers,
+            )
+            result = await client.call_tool(original_name, args)
+            return _extract_mcp_result(result)
 
         elif tool_type == "mcp_stdio":
             from cptr.utils.mcp.stdio_manager import stdio_manager

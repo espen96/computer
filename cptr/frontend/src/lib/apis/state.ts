@@ -34,6 +34,21 @@ export const saveWorkspaceState = (path: string, data: Record<string, unknown>) 
 export const deleteWorkspace = (path: string) =>
 	fetchHandler(`/api/state/workspace?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
 
+export const renameWorkspace = (path: string, name: string) =>
+	fetchHandler(`/api/state/workspace/name?path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`, { method: 'PATCH' });
+
 // ── Welcome page ────────────────────────────────────────────────
 
 export const getWelcome = () => fetchJSON<Record<string, unknown>>('/api/state/welcome');
+
+// ── Chat workspaces ─────────────────────────────────────────────
+
+export interface ChatWorkspace {
+	path: string;
+	name: string;
+	created_at: number;
+	updated_at: number;
+}
+
+export const getChatWorkspaces = () =>
+	fetchJSON<ChatWorkspace[]>('/api/state/chats');

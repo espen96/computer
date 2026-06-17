@@ -133,6 +133,8 @@
 		moveTabToGroup(tabId, fromGroupId, group.id);
 	}
 
+	const isChatModeWorkspace = $derived($activeWorkspace?.path.includes('chat-workspaces') ?? false);
+
 	const plusMenuItems = $derived([
 		{
 			label: $t('bar.newFile'),
@@ -142,7 +144,7 @@
 				openUntitledFileTab(group.id);
 			}
 		},
-		...($chatEnabled
+		...($chatEnabled && !isChatModeWorkspace
 			? [
 					{
 						label: $t('bar.newChat'),

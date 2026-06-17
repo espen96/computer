@@ -7,6 +7,7 @@
 	import { notificationsEnabled, notificationSound } from '$lib/stores/chat';
 	import { fetchJSON } from '$lib/apis';
 	import { updateConfig } from '$lib/apis/admin';
+	import { getChatWorkspaceRoot, setChatWorkspaceRoot } from '$lib/apis/admin';
 	import { session } from '$lib/session';
 	import ToggleSwitch from '../common/ToggleSwitch.svelte';
 	import { onMount } from 'svelte';
@@ -20,7 +21,15 @@
 	let webhookUrlOriginal = $state('');
 	let saving = $state(false);
 
-	let dirty = $derived(webhookUrl.trim() !== webhookUrlOriginal);
+	// ── Chat workspace root (admin) ─────────────────────────────
+	let chatWorkspaceRoot = $state('');
+	let chatWorkspaceRootDefault = $state('');
+	let chatWorkspaceRootOriginal = $state('');
+
+	let dirty = $derived(
+		webhookUrl.trim() !== webhookUrlOriginal ||
+		($session?.role === 'admin' && chatWorkspaceRoot.trim() !== chatWorkspaceRootOriginal)
+	);
 
 	onMount(async () => {
 		try {
@@ -29,6 +38,15 @@
 			webhookUrl = url;
 			webhookUrlOriginal = url;
 		} catch {}
+
+		if ($session?.role === 'admin') {
+			try {
+				const rootData = await getChatWorkspaceRoot();
+				chatWorkspaceRoot = rootData.path;
+				chatWorkspaceRootDefault = rootData.default;
+				chatWorkspaceRootOriginal = rootData.path;
+			} catch {}
+		}
 	});
 
 	async function save() {
@@ -36,6 +54,12 @@
 		try {
 			await updateConfig({ 'notifications.webhook_url': webhookUrl.trim() || null });
 			webhookUrlOriginal = webhookUrl.trim();
+
+			if ($session?.role === 'admin' && chatWorkspaceRoot.trim() !== chatWorkspaceRootOriginal) {
+				await setChatWorkspaceRoot(chatWorkspaceRoot.trim() || chatWorkspaceRootDefault);
+				chatWorkspaceRootOriginal = chatWorkspaceRoot.trim();
+			}
+
 			toast.success($t('settings.saved'));
 		} catch {
 			toast.error($t('general.webhookUrlSaveFailed'));
@@ -137,6 +161,23 @@
 			<p class="text-[11px] text-gray-400 dark:text-gray-600 mt-1">
 				{$t('general.updateNotificationsDesc')}
 			</p>
+
+			<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">{$t('general.chatWorkspaceRoot')}</h3>
+			<div>
+				<label class="text-xs text-gray-600 dark:text-gray-400" for="chat-workspace-root">
+					{$t('general.chatWorkspaceRootPath')}
+				</label>
+				<input
+					id="chat-workspace-root"
+					type="text"
+					bind:value={chatWorkspaceRoot}
+					placeholder={chatWorkspaceRootDefault}
+					class="w-full mt-1 h-7 px-2 rounded-lg text-xs bg-gray-100 dark:bg-white/6 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/8 outline-none focus:border-blue-400 dark:focus:border-blue-500 transition-colors font-mono"
+				/>
+				<p class="text-[11px] text-gray-400 dark:text-gray-600 mt-1">
+					{$t('general.chatWorkspaceRootDesc')}
+				</p>
+			</div>
 		{/if}
 
 		<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">{$t('general.messageQueue')}</h3>

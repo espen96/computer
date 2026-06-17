@@ -116,13 +116,14 @@
 		fetchDirectories(prev);
 	}
 
+	let displayName = $state('');
 	function selectCurrent() {
 		if (onselect) {
 			onselect(currentPath);
 			onclose();
 			return;
 		}
-		addWorkspace(currentPath);
+		addWorkspace(currentPath, displayName || undefined);
 		goto(`/?workspace=${encodeURIComponent(currentPath)}`);
 		onclose();
 	}
@@ -438,10 +439,20 @@
 
 	<!-- Footer -->
 	<div class="flex items-center gap-2 px-3.5 pb-3 pt-1 shrink-0">
-		<span
-			class="flex-1 text-[11px] text-gray-400 dark:text-gray-600 font-mono truncate min-w-0"
-			title={currentPath}>{currentPath}</span
-		>
+			<div class="flex-1 flex items-center gap-2 min-w-0">
+				<span
+					class="text-[11px] text-gray-400 dark:text-gray-600 font-mono truncate min-w-0 hidden sm:inline"
+					title={currentPath}>{currentPath}</span
+				>
+				<input
+					bind:value={displayName}
+					type="text"
+					class="flex-1 min-w-0 border border-gray-200 dark:border-white/8 rounded px-1.5 py-0.5 text-[11px] bg-transparent text-gray-900 dark:text-white placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors duration-100"
+					placeholder={currentFolderName}
+					onclick={(e) => e.stopPropagation()}
+					spellcheck="false"
+				/>
+			</div>
 		<button
 			class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 px-3 py-1.5 rounded-lg transition-colors duration-100 shrink-0"
 			onclick={onclose}>{$t('directory.cancel')}</button

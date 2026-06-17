@@ -11,6 +11,7 @@ from cptr.routers.chat import invalidate_model_cache
 from cptr.models import User, Auth, Config
 from cptr.utils.config import AuthResult, _get_jwt_secret, check_access, hash_password, now_ms
 from cptr.utils.crypto import decrypt_key, encrypt_key, mask_key
+from cptr.env import DATA_DIR
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -663,3 +664,27 @@ async def verify_tool_server(server_id: str, request: Request):
         return JSONResponse({"ok": False, "message": str(e)}, 400)
     except Exception as e:
         return JSONResponse({"ok": False, "message": str(e)}, 400)
+
+
+# ── Chat workspace root ──────────────────────────────────────
+
+
+@router.get("/chat/workspace-root")
+async def get_chat_workspace_root(request: Request):
+    """Get the configured chat workspace root directory."""
+    require_admin(request)
+    root = await Config.get("chat.workspace_root")
+    default = str(DATA_DIR / "chat-workspaces")
+    return {"path": root or default, "default": default}
+
+
+class ChatWorkspaceRootRequest(BaseModel):
+    path: str
+
+
+@router.post("/chat/workspace-root")
+async def set_chat_workspace_root(body: ChatWorkspaceRootRequest, request: Request):
+    """Set the chat workspace root directory."""
+    require_admin(request)
+    await Config.upsert({"chat.workspace_root": body.path})
+    return {"ok": True, "path": body.path}

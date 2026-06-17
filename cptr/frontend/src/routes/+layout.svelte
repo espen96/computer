@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import '@xterm/xterm/css/xterm.css';
+	import 'katex/dist/katex.min.css';
 
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
@@ -356,7 +357,10 @@
 	$effect(() => {
 		const ws = $currentWorkspace;
 		if (ws) {
-			systemEvents.connect(ws.fileBrowserCwd || ws.path);
+			// Skip WebSocket for temp chat workspaces (path not on disk yet)
+			if (!ws.path.includes('/temp-')) {
+				systemEvents.connect(ws.fileBrowserCwd || ws.path);
+			}
 			socketStore.connect();
 			bindGlobalChatListener();
 		} else {
@@ -396,6 +400,15 @@
 	$effect(() => {
 		isGitRepo.set(gitStatusStore.isRepo);
 	});
+
+	const workspaceName = $derived.by(() => {
+		if (!$currentWorkspace) return '';
+		if ($currentWorkspace.path.includes('chat-workspaces')) {
+			const chatTab = $currentWorkspace.groups.flatMap(g => g.tabs).find(t => t.type === 'chat');
+			return chatTab ? chatTab.label : $currentWorkspace.name;
+		}
+		return $currentWorkspace.name;
+	});
 </script>
 
 <svelte:head>
@@ -405,6 +418,13 @@
 		href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:wght@400;500&display=swap"
 		rel="stylesheet"
 	/>
+	<title>{$activeTab && $activeTab.type !== 'files'
+		? $currentWorkspace
+			? `${$activeTab.label} / ${workspaceName} / cptr`
+			: `${$activeTab.label} / cptr`
+		: $currentWorkspace
+			? `${workspaceName} / cptr`
+			: 'cptr'}</title>
 	<title
 		>{$activeTab && $activeTab.type !== 'files'
 			? $currentWorkspace
@@ -441,7 +461,7 @@
 	/>
 {:else if $stateLoaded}
 	<div
-		class="h-screen max-h-[100dvh] flex overflow-hidden font-sans antialiased text-gray-900 bg-white dark:text-gray-100 dark:bg-black"
+		class="h-screen max-h-[100dvh] flex overflow-hidden font-sans antialiased text-gray-100 bg-white dark:text-gray-100 dark:bg-gray-900"
 	>
 		<Sidebar />
 

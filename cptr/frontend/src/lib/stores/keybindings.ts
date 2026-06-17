@@ -250,9 +250,12 @@ export function executeAction(
 			openTerminalTab();
 			return true;
 
-		case 'newChat':
+		case 'newChat': {
+			const ws = get(currentWorkspace);
+			if (ws?.path.includes('chat-workspaces')) return true;
 			openChatTab();
 			return true;
+		}
 
 		case 'closeTab': {
 			const group = get(activeGroup);

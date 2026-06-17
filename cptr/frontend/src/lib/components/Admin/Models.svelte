@@ -72,7 +72,9 @@
 
 {{SKILLS}}
 
+Date: {{DATE}}
 Workspace: {{WORKSPACE_NAME}}
+OS: {{OS}}
 Files:
 {{FILE_TREE}}`;
 
