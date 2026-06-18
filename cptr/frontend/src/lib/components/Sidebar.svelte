@@ -14,6 +14,7 @@
 		showSearch,
 		chatList,
 		renameChat,
+		loadChatList,
 	} from '$lib/stores';
 	import Sortable from 'sortablejs';
 	import Icon from './Icon.svelte';
@@ -136,6 +137,9 @@
 		for (const path of expandedWorkspaces) {
 			fetchWorkspaceChats(path);
 		}
+
+		// Also reload the chat list so chat-mode titles update in real-time
+		loadChatList();
 	}
 
 	const MIN_WIDTH = 160;

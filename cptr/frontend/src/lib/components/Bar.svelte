@@ -52,6 +52,15 @@
 
 	import { onMount, onDestroy } from 'svelte';
 
+	const displayName = $derived.by(() => {
+		if (!$activeWorkspace) return '';
+		if ($activeWorkspace.path.includes('chat-workspaces')) {
+			const chatTab = $activeWorkspace.groups.flatMap(g => g.tabs).find(t => t.type === 'chat');
+			return chatTab ? chatTab.label : $activeWorkspace.name;
+		}
+		return $activeWorkspace.name;
+	});
+
 	onMount(() => {
 		window.addEventListener('resize', handleResize);
 	});
@@ -83,7 +92,7 @@
 		<span
 			class="text-[11px] font-medium text-gray-500 dark:text-gray-500 px-1 truncate flex-1 min-w-0"
 		>
-			{$activeWorkspace.name}
+			{displayName}
 		</span>
 	{:else}
 		<span class="flex-1"></span>

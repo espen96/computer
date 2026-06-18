@@ -289,6 +289,15 @@
 	$effect(() => {
 		isGitRepo.set(gitStatusStore.isRepo);
 	});
+
+	const workspaceName = $derived.by(() => {
+		if (!$currentWorkspace) return '';
+		if ($currentWorkspace.path.includes('chat-workspaces')) {
+			const chatTab = $currentWorkspace.groups.flatMap(g => g.tabs).find(t => t.type === 'chat');
+			return chatTab ? chatTab.label : $currentWorkspace.name;
+		}
+		return $currentWorkspace.name;
+	});
 </script>
 
 <svelte:head>
@@ -300,10 +309,10 @@
 	/>
 	<title>{$activeTab && $activeTab.type !== 'files'
 		? $currentWorkspace
-			? `${$activeTab.label} / ${$currentWorkspace.name} / cptr`
+			? `${$activeTab.label} / ${workspaceName} / cptr`
 			: `${$activeTab.label} / cptr`
 		: $currentWorkspace
-			? `${$currentWorkspace.name} / cptr`
+			? `${workspaceName} / cptr`
 			: 'cptr'}</title>
 	<meta name="description" content={$t('app.tagline')} />
 </svelte:head>
