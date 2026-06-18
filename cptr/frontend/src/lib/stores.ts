@@ -116,6 +116,40 @@ function createChatModeGroup(includeFiles = true): EditorGroup {
 	};
 }
 
+/** Ensure all required permanent tabs exist in a group, adding them if missing */
+function ensurePermanentTabs(group: EditorGroup, isChatMode: boolean): EditorGroup {
+	const requiredTypes: Array<{ type: Tab['type']; label: string; path?: string }> = [
+		{ type: 'files', label: 'Files' }
+	];
+	if (isChatMode) {
+		requiredTypes.unshift({ type: 'chat', label: 'New Chat', path: `new-${Date.now()}` });
+	}
+
+	const missingTypes = requiredTypes.filter(
+		(req) => !group.tabs.some((t) => t.type === req.type && t.permanent)
+	);
+
+	if (missingTypes.length === 0) return group;
+
+	const newTabs = [...group.tabs];
+	for (const missing of missingTypes) {
+		const id = nextId();
+		newTabs.unshift({
+			id,
+			type: missing.type,
+			label: missing.label,
+			path: missing.path,
+			permanent: true
+		});
+	}
+
+	return {
+		...group,
+		tabs: newTabs,
+		activeTabId: group.activeTabId || newTabs[0].id
+	};
+}
+
 function createDefaultWorkspace(path: string): WorkspaceState {
 	const name = path.split('/').filter(Boolean).pop() || path;
 	return {
@@ -466,6 +500,7 @@ export async function loadWorkspace(path: string): Promise<void> {
 			} catch {}
 
 			const ws = wsData as unknown as WorkspaceState;
+			const isChatMode = ws.path.includes('chat-workspaces');
 
 			// Remove dead terminal tabs from all groups
 			const cleanedGroups = ws.groups
@@ -483,7 +518,8 @@ export async function loadWorkspace(path: string): Promise<void> {
 						activeTabId: activeStillExists ? g.activeTabId : (filteredTabs[0]?.id ?? 'files')
 					};
 				})
-				.filter((g) => g.tabs.length > 0);
+				.filter((g) => g.tabs.length > 0)
+				.map((g) => ensurePermanentTabs(g, isChatMode));
 
 			const groups = cleanedGroups.length > 0 ? cleanedGroups : [createDefaultGroup()];
 			const activeGroupId = groups.some((g) => g.id === ws.activeGroupId)
@@ -1083,7 +1119,24 @@ export function closeGroup(groupId: string): void {
 			});
 		}
 
+		// Before removing the group, migrate permanent tabs that don't exist elsewhere
 		let newGroups = ws.groups.filter((g) => g.id !== groupId);
+		if (group && newGroups.length > 0) {
+			const primaryGroup = newGroups[0];
+			const permanentTabs = group.tabs.filter((t) => t.permanent);
+			for (const permTab of permanentTabs) {
+				const existsElsewhere = newGroups.some((g) =>
+					g.tabs.some((t) => t.type === permTab.type && t.permanent)
+				);
+				if (!existsElsewhere) {
+					primaryGroup.tabs.push({ ...permTab });
+					if (!primaryGroup.activeTabId) {
+						primaryGroup.activeTabId = permTab.id;
+					}
+				}
+			}
+		}
+
 		if (newGroups.length === 0) {
 			newGroups = [createDefaultGroup()];
 		}
@@ -1138,4 +1191,16 @@ export function setSplitRatio(ratio: number): void {
 	currentWorkspace.update((ws) =>
 		ws ? { ...ws, splitRatio: Math.max(0.2, Math.min(0.8, ratio)) } : ws
 	);
+}
+
+/** Restore missing permanent tabs in all groups (safety mechanism) */
+export function restoreMissingPermanentTabs(): void {
+	currentWorkspace.update((ws) => {
+		if (!ws) return ws;
+		const isChatMode = ws.path.includes('chat-workspaces');
+		return {
+			...ws,
+			groups: ws.groups.map((g) => ensurePermanentTabs(g, isChatMode))
+		};
+	});
 }
