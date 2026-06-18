@@ -353,6 +353,7 @@ async def pwa_manifest():
         "categories": ["developer", "productivity", "utilities"],
         "launch_handler": {"client_mode": ["navigate-existing", "auto"]},
         "handle_links": "preferred",
+        "note_taking": {"new_note_url": "/?action=newFile"},
         "prefer_related_applications": False,
         "related_applications": [],
     }
