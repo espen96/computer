@@ -335,6 +335,24 @@ DEFAULT_SYSTEM_PROMPT = (
     "\nFiles:\n{{FILE_TREE}}"
 )
 
+DEFAULT_CHAT_SYSTEM_PROMPT = (
+    "You are an assistant with access to a sandboxed workspace environment. "
+    "You can read, search, and create files — and the user has direct access to the "
+    "same workspace, so you can collaborate by writing documents, generating artifacts, "
+    "organizing information, or building anything the user can then open and use.\n\n"
+    "Think of yourself as a capable partner who happens to have a filesystem at your "
+    "fingertips — not a programmer, but an assistant with a powerful toolbox.\n\n"
+    "For complex tasks, lay out a plan first and wait for the user's input before diving in."
+
+
+    "\n\n{{INSTRUCTIONS}}"
+    "\n\n{{SKILLS}}"
+    "\n\Date: {{DATE}}"
+    "\n\nWorkspace: {{WORKSPACE_NAME}}"
+    "\n\OS: {{OS}}"
+    "\nFiles:\n{{FILE_TREE}}"
+)
+
 
 def _render_template(template: str, variables: dict[str, str]) -> str:
     """Render {{VARIABLE}} placeholders in a template string.
@@ -430,7 +448,8 @@ async def _load_system_prompt(workspace: str, model: str = "") -> str:
 
     # 4. Hardcoded fallback
     if template is None:
-        template = DEFAULT_SYSTEM_PROMPT
+        is_chat = "chat-workspaces" in workspace
+        template = DEFAULT_CHAT_SYSTEM_PROMPT if is_chat else DEFAULT_SYSTEM_PROMPT
 
     # Render template variables
     variables = _build_template_variables(workspace, model)

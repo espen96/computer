@@ -62,7 +62,9 @@ For complex tasks, create an implementation plan first using create_artifact. Th
 
 {{INSTRUCTIONS}}
 
+Date: {{DATE}}
 Workspace: {{WORKSPACE_NAME}}
+OS: {{OS}}
 Files:
 {{FILE_TREE}}`;
 
