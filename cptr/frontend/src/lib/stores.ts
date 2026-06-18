@@ -535,12 +535,18 @@ export async function loadWorkspace(path: string): Promise<void> {
 				splitRatio: ws.splitRatio ?? 0.5,
 				fileBrowserCwd: ws.fileBrowserCwd ?? path
 			});
+	} else {
+		// First time opening this workspace, create defaults
+		// Chat-mode workspaces get a chat tab instead of Files tab
+		const isChatMode = path.includes('chat-workspaces');
+		if (isChatMode) {
+			const ws = createChatModeWorkspace(path);
+			if (wsData?.name) ws.name = wsData.name as string;
+			currentWorkspace.set(ws);
 		} else {
-			// First time opening this workspace, create defaults
-			// Chat-mode workspaces get a chat tab instead of Files tab
-			const isChatMode = path.includes('chat-workspaces');
-			currentWorkspace.set(isChatMode ? createChatModeWorkspace(path) : createDefaultWorkspace(path));
+			currentWorkspace.set(createDefaultWorkspace(path));
 		}
+	}
 	} catch {
 		// Error loading, create fresh workspace
 		const isChatMode = path.includes('chat-workspaces');
