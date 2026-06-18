@@ -326,6 +326,35 @@ async def delete_chat(chat_id: str, request: Request):
     return {"ok": True}
 
 
+# ── Rename a chat ───────────────────────────────────────────
+
+
+@router.patch("/{chat_id}/title")
+async def rename_chat(chat_id: str, request: Request):
+    """Update a chat's title. Also syncs the workspace name for chat-mode workspaces."""
+    user_id = _get_user(request)
+    chat = await Chat.get_by_id(chat_id)
+    if not chat or chat.user_id != user_id:
+        raise HTTPException(404, "chat not found")
+
+    body = await request.json()
+    title = (body.get("title") or "").strip()
+    if not title:
+        raise HTTPException(400, "title is required")
+
+    now = now_ms()
+    await Chat.update_title(chat_id, title, now)
+
+    # Sync workspace name for chat-mode workspaces
+    workspace = chat.meta.get("workspace", "") if chat.meta else ""
+    if workspace:
+        await Workspace.rename(user_id, workspace, title)
+
+    from cptr.socket.main import emit_to_user
+    await emit_to_user(user_id, {"chat_id": chat_id, "title": title})
+    return {"ok": True, "title": title}
+
+
 # ── Send a message ──────────────────────────────────────────
 
 

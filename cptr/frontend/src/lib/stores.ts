@@ -611,6 +611,14 @@ export async function removeChatWorkspace(chatId: string): Promise<void> {
 	await loadChatList();
 }
 
+/** Rename a chat (updates both Chat.title and Workspace.name for chat-mode workspaces). */
+export async function renameChat(chatId: string, newTitle: string): Promise<void> {
+	const { renameChat: renameChatApi } = await import('$lib/apis/chat');
+	await renameChatApi(chatId, newTitle);
+	// Reload chat list to get updated names
+	await loadChatList();
+}
+
 /** Reorder workspaces in the sidebar (from drag-and-drop). */
 export function reorderWorkspaces(oldIndex: number, newIndex: number): void {
 	workspaceList.update((list) => {

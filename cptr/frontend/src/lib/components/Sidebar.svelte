@@ -13,6 +13,7 @@
 		showChangelog,
 		showSearch,
 		chatList,
+		renameChat,
 	} from '$lib/stores';
 	import Sortable from 'sortablejs';
 	import Icon from './Icon.svelte';
@@ -205,6 +206,18 @@
 	let renameValue = $state('');
 	let renameInputEl: HTMLInputElement | undefined = $state();
 
+	// ── Chat-mode workspace rename ────────────────────────────────
+	let renamingChatPath = $state<string | null>(null);
+	let renameChatValue = $state('');
+	let renameChatInputEl: HTMLInputElement | undefined = $state();
+	let chatMenuPath = $state<string | null>(null);
+	let chatMenuAnchor = $state<HTMLElement | null>(null);
+
+	// ── Workspace expand chat menu ────────────────────────────────
+	let wsChatMenuId = $state<string | null>(null);
+	let wsChatMenuAnchor = $state<HTMLElement | null>(null);
+	let wsChatMenuPath = $state<string | null>(null);
+
 	$effect(() => {
 		if (renamingPath && renameInputEl) {
 			requestAnimationFrame(() => {
@@ -230,6 +243,80 @@
 
 	function cancelRename() {
 		renamingPath = null;
+	}
+
+	// ── Chat-mode workspace rename ────────────────────────────────
+
+	$effect(() => {
+		if (renamingChatPath && renameChatInputEl) {
+			requestAnimationFrame(() => {
+				renameChatInputEl?.focus();
+				renameChatInputEl?.select();
+			});
+		}
+	});
+
+	function openChatMenu(e: MouseEvent, path: string) {
+		e.stopPropagation();
+		e.preventDefault();
+		chatMenuAnchor = e.currentTarget as HTMLElement;
+		chatMenuPath = path;
+	}
+
+	function closeChatMenu() {
+		chatMenuPath = null;
+		chatMenuAnchor = null;
+	}
+
+	// ── Workspace expand chat menu ────────────────────────────────
+
+	function openWsChatMenu(e: MouseEvent, chatId: string, wsPath: string) {
+		e.stopPropagation();
+		e.preventDefault();
+		wsChatMenuAnchor = e.currentTarget as HTMLElement;
+		wsChatMenuId = chatId;
+		wsChatMenuPath = wsPath;
+	}
+
+	function closeWsChatMenu() {
+		wsChatMenuId = null;
+		wsChatMenuAnchor = null;
+		wsChatMenuPath = null;
+	}
+
+	async function handleDeleteWsChat(chatId: string) {
+		closeWsChatMenu();
+		const { deleteChat } = await import('$lib/apis/chat');
+		await deleteChat(chatId);
+		// Refresh the workspace chat cache
+		if (wsChatMenuPath) {
+			fetchWorkspaceChats(wsChatMenuPath);
+		}
+	}
+
+	function startRenameChat(path: string, currentName: string) {
+		renamingChatPath = path;
+		renameChatValue = currentName;
+		closeChatMenu();
+	}
+
+	async function commitRenameChat() {
+		const path = renamingChatPath;
+		const val = renameChatValue.trim();
+		renamingChatPath = null;
+		if (!path || !val) return;
+		// Extract chat ID from workspace path (format: {root}/{chat_id})
+		const chatId = path.split(/[/\\]/).pop() || '';
+		await renameChat(chatId, val);
+	}
+
+	function cancelRenameChat() {
+		renamingChatPath = null;
+	}
+
+	async function handleDeleteChatMode(chatPath: string) {
+		closeChatMenu();
+		await removeWorkspace(chatPath);
 	}
 
 	function closeSidebar() {
@@ -328,10 +415,6 @@
 		if (typeof window !== 'undefined' && window.innerWidth < 768) {
 			sidebarOpen.set(false);
 		}
-	}
-
-	async function handleDeleteChatMode(chatPath: string) {
-		await removeWorkspace(chatPath);
 	}
 
 	onMount(() => {
@@ -490,14 +573,32 @@
 									onclick={() => handleChatItemClick(chat)}
 									onkeydown={(e) => { if (e.key === 'Enter') handleChatItemClick(chat); }}
 								>
-									<span class="flex-1 text-xs text-gray-500 dark:text-gray-500 truncate min-w-0">{chat.name}</span>
-									<button
-										class="flex items-center justify-center w-5 h-5 rounded shrink-0 text-gray-300 dark:text-gray-700 hover:text-gray-500 dark:hover:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/8 opacity-0 group-hover:opacity-100 transition-all duration-75"
-										onclick={(e) => { e.stopPropagation(); handleDeleteChatMode(chat.path); }}
-										aria-label={$t('sidebar.remove')}
+									{#if renamingChatPath === chat.path}
+										<input
+											bind:this={renameChatInputEl}
+											bind:value={renameChatValue}
+											type="text"
+											class="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-gray-900 dark:text-white"
+											onclick={(e) => e.stopPropagation()}
+											onkeydown={(e) => {
+												if (e.key === 'Enter') { e.preventDefault(); commitRenameChat(); }
+												if (e.key === 'Escape') { e.preventDefault(); cancelRenameChat(); }
+											}}
+											onblur={commitRenameChat}
+											spellcheck="false"
+										/>
+									{:else}
+										<span class="flex-1 text-xs text-gray-500 dark:text-gray-500 truncate min-w-0">{chat.name}</span>
+									{/if}
+									<span
+										class="flex items-center justify-center w-4 h-4 shrink-0 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-75"
+										role="button"
+										tabindex="-1"
+										onclick={(e) => openChatMenu(e, chat.path)}
+										aria-label={$t('a11y.chatOptions')}
 									>
-										<Icon name="trash" size={10} />
-									</button>
+										<Icon name="three-dots" size={11} />
+									</span>
 								</div>
 							{/each}
 						{/if}
@@ -614,6 +715,7 @@
 									<ChatItem
 										{chat}
 										onclick={() => handleSidebarChatClick(chat.id, ws.path, chat.title)}
+										onmenu={(e) => openWsChatMenu(e, chat.id, ws.path)}
 									/>
 								{/each}
 								<button
@@ -720,6 +822,42 @@
 			}
 		]}
 		onclose={closeWsMenu}
+	/>
+{/if}
+
+{#if chatMenuPath && chatMenuAnchor}
+	<DropdownMenu
+		anchor={chatMenuAnchor}
+		items={[
+			{
+				label: $t('sidebar.rename'),
+				icon: 'pencil',
+				onclick: () => {
+					const chat = $chatList.find((c) => c.path === chatMenuPath);
+					if (chat) startRenameChat(chat.path, chat.name);
+				}
+			},
+			{
+				label: $t('sidebar.remove'),
+				icon: 'xmark',
+				onclick: () => handleDeleteChatMode(chatMenuPath!)
+			}
+		]}
+		onclose={closeChatMenu}
+	/>
+{/if}
+
+{#if wsChatMenuId && wsChatMenuAnchor}
+	<DropdownMenu
+		anchor={wsChatMenuAnchor}
+		items={[
+			{
+				label: $t('sidebar.remove'),
+				icon: 'xmark',
+				onclick: () => handleDeleteWsChat(wsChatMenuId!)
+			}
+		]}
+		onclose={closeWsChatMenu}
 	/>
 {/if}
 

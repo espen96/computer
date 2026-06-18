@@ -18,7 +18,7 @@ from cptr.env import CHAT_MAX_ITERATIONS, CHAT_TOOL_MAX_CHARS
 from cptr.utils.context import should_compact
 from cptr.utils.skills import discover_skills, load_skill, build_catalog_xml, format_skill_content
 from cptr.utils.summarize import summarize_messages
-from cptr.models import Chat, ChatMessage, Config
+from cptr.models import Chat, ChatMessage, Config, Workspace
 from cptr.socket.main import emit_to_user
 from cptr.utils.ai import (
     ChatCompletionForm,
@@ -527,6 +527,14 @@ async def generate_chat_title(
 
         # Persist and notify
         await Chat.update_title(chat_id, title, now_ms())
+
+        # Sync workspace name for chat-mode workspaces
+        chat_obj = await Chat.get_by_id(chat_id)
+        if chat_obj and chat_obj.meta:
+            workspace = chat_obj.meta.get("workspace", "")
+            if workspace:
+                await Workspace.rename(user_id, workspace, title)
+
         await emit_to_user(user_id, {"chat_id": chat_id, "title": title})
         logger.info("[title] Generated title for chat %s: %s", chat_id[:8], title)
 
