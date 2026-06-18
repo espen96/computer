@@ -653,6 +653,14 @@ export async function renameChat(chatId: string, newTitle: string): Promise<void
 	await renameChatApi(chatId, newTitle);
 	// Reload chat list to get updated names
 	await loadChatList();
+
+	// Also update currentWorkspace if it's the active one (prevents persistWorkspace from overwriting)
+	currentWorkspace.update((ws) => {
+		if (ws?.path?.endsWith(chatId)) {
+			return { ...ws, name: newTitle };
+		}
+		return ws;
+	});
 }
 
 /** Reorder workspaces in the sidebar (from drag-and-drop). */
