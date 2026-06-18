@@ -1,6 +1,18 @@
 <script lang="ts">
 	import type { Token } from 'marked';
 	import { openFileTab, setFileBrowserCwd, setActiveTab } from '$lib/stores';
+	import katex from 'katex';
+
+	function renderMath(text: string, isBlock: boolean): string {
+		try {
+			return katex.renderToString(text, {
+				displayMode: isBlock,
+				throwOnError: false
+			});
+		} catch (err) {
+			return text;
+		}
+	}
 
 	interface Props {
 		items: Token[];
@@ -33,6 +45,10 @@
 		{:else}
 			{decodeEntities('text' in item ? item.text : item.raw)}
 		{/if}
+	{:else if item.type === 'inlineMath'}
+		<span class="inline-block align-baseline">
+			{@html renderMath((item as any).text, false)}
+		</span>
 	{:else if item.type === 'strong'}
 		<strong
 			>{#if 'tokens' in item && item.tokens}<svelte:self

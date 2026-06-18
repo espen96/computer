@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import '@xterm/xterm/css/xterm.css';
+	import 'katex/dist/katex.min.css';
 
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
