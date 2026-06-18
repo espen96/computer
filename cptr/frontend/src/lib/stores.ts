@@ -591,6 +591,11 @@ export async function removeWorkspace(path: string): Promise<void> {
 	workspaceList.update((list) => list.filter((w) => w.path !== path));
 	workspaceOrder.update((order) => order.filter((p) => p !== path));
 
+	// If this was a chat workspace, refresh chat list
+	if (path.includes('chat-workspaces')) {
+		await loadChatList();
+	}
+
 	// If this was the current workspace, clear it
 	const ws = get(currentWorkspace);
 	if (ws?.path === path) {

@@ -8,13 +8,16 @@ Three layers:
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 
 from fastapi import APIRouter, Request, Query
+from sqlalchemy import select
 from cptr.env import DATA_DIR
 from cptr.models import UserStates, Workspace
 from cptr.utils.config import get_or_create_user
+from cptr.utils.db import get_db
 
 router = APIRouter(prefix="/api/state", tags=["state"])
 
@@ -113,10 +116,29 @@ async def put_workspace(request: Request, path: str = Query(...)):
 
 @router.delete("/workspace")
 async def delete_workspace(request: Request, path: str = Query(...)):
-    """Remove a workspace."""
+    """Remove a workspace. If it's a chat workspace, also clean up chat data."""
     user_id = await _get_user_id(request)
     if not user_id:
         return {"status": "skipped"}
+
+    ws = await Workspace.get_by_path(user_id, path)
+    if ws and ws.is_chat:
+        # Delete chat and messages associated with this workspace
+        from cptr.models import Chat, ChatMessage
+        import shutil
+
+        async with await get_db() as db:
+            chats = (await db.execute(
+                select(Chat).where(Chat.user_id == user_id)
+            )).scalars().all()
+            for chat in chats:
+                meta = chat.meta or {}
+                if meta.get("workspace") == path:
+                    # Delete messages
+                    await Chat.delete(chat.id)
+                    # Delete workspace filesystem
+                    await asyncio.to_thread(shutil.rmtree, path, True)
+
     await Workspace.delete_by_path(user_id, path)
     return {"status": "deleted"}
 

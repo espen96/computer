@@ -13,7 +13,6 @@
 		showChangelog,
 		showSearch,
 		chatList,
-		removeChatWorkspace,
 	} from '$lib/stores';
 	import Sortable from 'sortablejs';
 	import Icon from './Icon.svelte';
@@ -331,8 +330,8 @@
 		}
 	}
 
-	async function handleDeleteChatMode(chatId: string) {
-		await removeChatWorkspace(chatId);
+	async function handleDeleteChatMode(chatPath: string) {
+		await removeWorkspace(chatPath);
 	}
 
 	onMount(() => {
@@ -494,7 +493,7 @@
 									<span class="flex-1 text-xs text-gray-500 dark:text-gray-500 truncate min-w-0">{chat.name}</span>
 									<button
 										class="flex items-center justify-center w-5 h-5 rounded shrink-0 text-gray-300 dark:text-gray-700 hover:text-gray-500 dark:hover:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/8 opacity-0 group-hover:opacity-100 transition-all duration-75"
-										onclick={(e) => { e.stopPropagation(); handleDeleteChatMode(chat.path.split('/').pop() || ''); }}
+										onclick={(e) => { e.stopPropagation(); handleDeleteChatMode(chat.path); }}
 										aria-label={$t('sidebar.remove')}
 									>
 										<Icon name="trash" size={10} />
