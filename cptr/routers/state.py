@@ -53,6 +53,18 @@ async def put_preferences(request: Request):
     return {"status": "saved"}
 
 
+@router.patch("/workspace/name")
+async def patch_workspace_name(
+    request: Request, path: str = Query(...), name: str = Query(...)
+):
+    """Update just the display name of a workspace."""
+    user_id = await _get_user_id(request)
+    if not user_id:
+        return {"status": "skipped"}
+    await Workspace.rename(user_id, path, name)
+    return {"status": "saved"}
+
+
 # ── Workspace list ───────────────────────────────────────────────
 
 

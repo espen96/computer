@@ -5,6 +5,7 @@
 		workspaceList,
 		currentWorkspace,
 		removeWorkspace,
+		renameWorkspace,
 		reorderWorkspaces,
 		sidebarOpen,
 		sidebarWidth,
@@ -198,6 +199,38 @@
 		wsMenuAnchor = null;
 	}
 
+	// ── Workspace rename ───────────────────────────────────────────
+	let renamingPath = $state<string | null>(null);
+	let renameValue = $state('');
+	let renameInputEl: HTMLInputElement | undefined = $state();
+
+	$effect(() => {
+		if (renamingPath && renameInputEl) {
+			requestAnimationFrame(() => {
+				renameInputEl?.focus();
+				renameInputEl?.select();
+			});
+		}
+	});
+
+	function startRename(path: string, currentName: string) {
+		renamingPath = path;
+		renameValue = currentName;
+		closeWsMenu();
+	}
+
+	async function commitRename() {
+		const path = renamingPath;
+		const val = renameValue.trim();
+		renamingPath = null;
+		if (!path || !val) return;
+		await renameWorkspace(path, val);
+	}
+
+	function cancelRename() {
+		renamingPath = null;
+	}
+
 	function closeSidebar() {
 		sidebarOpen.set(false);
 	}
@@ -379,9 +412,25 @@
 							{:else}
 								<Icon name="folder" size={14} />
 							{/if}
-							<span class="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap"
-								>{ws.name}</span
-							>
+							{#if renamingPath === ws.path}
+								<input
+									bind:this={renameInputEl}
+									bind:value={renameValue}
+									type="text"
+									class="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-gray-900 dark:text-white"
+									onclick={(e) => e.stopPropagation()}
+									onkeydown={(e) => {
+										if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+										if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+									}}
+									onblur={commitRename}
+									spellcheck="false"
+								/>
+							{:else}
+								<span class="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap"
+									>{ws.name}</span
+								>
+							{/if}
 						</a>
 						<span
 							class="flex items-center justify-center w-4 h-4 shrink-0 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-75"
@@ -511,6 +560,14 @@
 	<DropdownMenu
 		anchor={wsMenuAnchor}
 		items={[
+			{
+				label: $t('sidebar.rename'),
+				icon: 'pencil',
+				onclick: () => {
+					const ws = $workspaceList.find((w) => w.path === wsMenuPath);
+					if (ws) startRename(ws.path, ws.name);
+				}
+			},
 			{
 				label: $t('sidebar.remove'),
 				icon: 'xmark',

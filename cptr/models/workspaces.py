@@ -103,3 +103,21 @@ class Workspace(Base):
         async with await get_db() as db:
             await db.execute(delete(Workspace).where(Workspace.user_id == user_id))
             await db.commit()
+
+    @staticmethod
+    async def rename(user_id: str, path: str, name: str) -> bool:
+        """Update only the display name of a workspace. Returns True if found."""
+        async with await get_db() as db:
+            result = await db.execute(
+                select(Workspace).where(
+                    Workspace.user_id == user_id,
+                    Workspace.path == path,
+                )
+            )
+            ws = result.scalar_one_or_none()
+            if not ws:
+                return False
+            ws.name = name
+            ws.updated_at = int(time.time())
+            await db.commit()
+            return True

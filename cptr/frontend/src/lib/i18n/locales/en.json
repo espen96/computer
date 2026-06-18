@@ -29,6 +29,7 @@
 	"sidebar.admin": "Admin",
 	"sidebar.logOut": "Log out",
 	"sidebar.remove": "Remove",
+	"sidebar.rename": "Rename",
 	"sidebar.workspaceOptions": "Workspace options",
 	"sidebar.closeSidebar": "Close sidebar",
 	"sidebar.showMore": "Show more",

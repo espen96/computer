@@ -22,7 +22,8 @@ import {
 	savePreferences,
 	getWorkspaceList,
 	getWorkspaceState,
-	saveWorkspaceState
+	saveWorkspaceState,
+	renameWorkspace as renameWorkspaceApi
 } from '$lib/apis/state';
 import { listSessions, createSession, deleteSession } from '$lib/apis/terminal';
 import { changeLocale, i18next } from '$lib/i18n';
@@ -501,19 +502,33 @@ if (typeof window !== 'undefined') {
  * (via goto() in the calling component), which triggers loadWorkspace().
  * The URL is the single source of truth for which workspace is active.
  */
-export function addWorkspace(path: string): void {
-	const name = path.split('/').filter(Boolean).pop() || path;
+export function addWorkspace(path: string, name?: string): void {
+	const displayName = name || path.split('/').filter(Boolean).pop() || path;
 
 	// Update workspace list for sidebar
 	workspaceList.update((list) => {
 		if (list.some((w) => w.path === path)) return list;
-		return [...list, { path, name }];
+		return [...list, { path, name: displayName }];
 	});
 
 	// Append to order
 	workspaceOrder.update((order) => {
 		if (order.includes(path)) return order;
 		return [...order, path];
+	});
+}
+
+export async function renameWorkspace(path: string, newName: string): Promise<void> {
+	await renameWorkspaceApi(path, newName);
+	workspaceList.update((list) =>
+		list.map((w) => (w.path === path ? { ...w, name: newName } : w))
+	);
+	// Also update currentWorkspace if it's the active one
+	currentWorkspace.update((ws) => {
+		if (ws?.path === path) {
+			return { ...ws, name: newName };
+		}
+		return ws;
 	});
 }
 
