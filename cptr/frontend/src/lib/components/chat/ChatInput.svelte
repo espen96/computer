@@ -34,6 +34,24 @@
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import { t } from '$lib/i18n';
 
+	// Keep screen awake during voice mode conversations
+	let voiceWakeLock: WakeLockSentinel | null = null;
+
+	async function acquireVoiceWakeLock() {
+		if (voiceWakeLock) return;
+		try {
+			if ('wakeLock' in navigator) {
+				voiceWakeLock = await navigator.wakeLock.request('screen');
+				voiceWakeLock.addEventListener('release', () => { voiceWakeLock = null; });
+			}
+		} catch {}
+	}
+
+	function releaseVoiceWakeLock() {
+		voiceWakeLock?.release().catch(() => {});
+		voiceWakeLock = null;
+	}
+
 	interface Props {
 		inputText: string;
 		selectedModel: string;
@@ -517,6 +535,7 @@
 	onDestroy(() => {
 		stopVoiceRecognition();
 		if (voiceRestartTimer) clearTimeout(voiceRestartTimer);
+		releaseVoiceWakeLock();
 		destroyPopup();
 		destroySkillPopup();
 		editor?.destroy();
@@ -810,10 +829,12 @@
 		voiceModeEnabled.set(next);
 		if (next) {
 			void unlockTtsAudioPlayback();
+			void acquireVoiceWakeLock();
 			voiceWaitingForResponse = false;
 			voiceSawStreaming = false;
 			startVoiceRecognition();
 		} else {
+			releaseVoiceWakeLock();
 			voiceWaitingForResponse = false;
 			voiceSawStreaming = false;
 			stopVoiceRecognition();

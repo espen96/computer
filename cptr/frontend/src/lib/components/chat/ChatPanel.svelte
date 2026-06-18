@@ -78,6 +78,7 @@
 	let autoScroll = $state(true);
 	let cancelledMessageId: string | null = null;
 	let loading = $state(!!initialChatId);
+	let chatTitle = '';
 	let ttsQueue: string[] = [];
 	let ttsBuffer = '';
 	let ttsInsideCodeFence = false;
@@ -273,6 +274,7 @@
 			currentMessageId = data.chat.current_message_id;
 			// Update tab label with the real title from the DB
 			if (tabId && data.chat.title) {
+				chatTitle = data.chat.title;
 				updateTab(tabId, id, data.chat.title);
 			}
 		} finally {
@@ -1225,7 +1227,7 @@
 				if (generation !== ttsGeneration) break;
 				if (ttsObjectUrl) URL.revokeObjectURL(ttsObjectUrl);
 				ttsObjectUrl = URL.createObjectURL(blob);
-				ttsAudio = setTtsAudioPlaybackSource(ttsObjectUrl) ?? new Audio(ttsObjectUrl);
+				ttsAudio = setTtsAudioPlaybackSource(ttsObjectUrl, chatTitle) ?? new Audio(ttsObjectUrl);
 				await new Promise<void>((resolve, reject) => {
 					const audio = ttsAudio!;
 					audio.onended = () => resolve();

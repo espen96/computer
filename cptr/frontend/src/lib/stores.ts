@@ -493,6 +493,46 @@ if (typeof window !== 'undefined') {
 	});
 }
 
+// ── Cross-tab state sync (BroadcastChannel) ─────────────────────
+// Syncs theme and locale changes between browser tabs / PWA windows
+// so the user doesn't see divergent state.
+
+if (typeof BroadcastChannel !== 'undefined') {
+	const channel = new BroadcastChannel('cptr-sync');
+
+	let _syncingFromBroadcast = false;
+
+	channel.onmessage = (e: MessageEvent) => {
+		const { type, value } = e.data || {};
+		_syncingFromBroadcast = true;
+		try {
+			if (type === 'theme' && value) {
+				theme.set(value);
+			} else if (type === 'locale' && value) {
+				changeLocale(value);
+			}
+		} finally {
+			_syncingFromBroadcast = false;
+		}
+	};
+
+	theme.subscribe((t) => {
+		if (!_syncingFromBroadcast) {
+			channel.postMessage({ type: 'theme', value: t });
+		}
+	});
+
+	// Locale changes are broadcast from changeLocale() calls;
+	// subscribe to i18next language changes.
+	if (i18next) {
+		i18next.on('languageChanged', (lng: string) => {
+			if (!_syncingFromBroadcast) {
+				channel.postMessage({ type: 'locale', value: lng });
+			}
+		});
+	}
+}
+
 // ── Workspace actions ───────────────────────────────────────────
 
 /**

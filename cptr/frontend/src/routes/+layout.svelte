@@ -14,6 +14,7 @@
 	import AuthScreen from '$lib/components/AuthScreen.svelte';
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 	import UpdateToast from '$lib/components/UpdateToast.svelte';
+	import ConnectionMonitor from '$lib/components/ConnectionMonitor.svelte';
 	import { Toaster } from 'svelte-sonner';
 	import {
 		activeTab,
@@ -371,6 +372,7 @@
 	</div>
 {/if}
 
+<ConnectionMonitor />
 <Toaster
 	position="top-right"
 	theme="system"

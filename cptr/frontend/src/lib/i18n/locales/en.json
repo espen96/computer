@@ -801,5 +801,17 @@
 	"onboarding.suggestion3": "What files are here?",
 	"onboarding.suggestion4": "Help me write tests",
 	"onboarding.connectAiNudge": "Connect an AI provider to start chatting.",
-	"onboarding.goToConnections": "Settings → Connections"
+	"onboarding.goToConnections": "Settings → Connections",
+
+	"pwa.reconnecting": "Reconnecting",
+	"pwa.reconnectingTo": "Reconnecting to {{hostname}}",
+	"chat.share": "Share",
+
+	"general.storage": "Storage",
+	"general.cacheUsage": "Cache usage",
+	"general.persistentStorage": "Persistent storage",
+	"general.persistentYes": "Active",
+	"general.persistentNo": "Not granted",
+	"general.clearCache": "Clear cache",
+	"general.cacheCleared": "Cache cleared"
 }
