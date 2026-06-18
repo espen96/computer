@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { markTabUnsaved, updateTabFilePath, activeWorkspace } from '$lib/stores';
+	import {
+		clearTabEdit,
+		markTabUnsaved,
+		updateTabFilePath,
+		activeWorkspace
+	} from '$lib/stores';
 	import { get } from 'svelte/store';
 	import { tooltip } from '$lib/tooltip';
 	import { readFile, writeFile } from '$lib/apis/files';
@@ -61,9 +66,10 @@
 	interface Props {
 		filePath: string;
 		tabId: string;
+		edit?: boolean;
 	}
 
-	let { filePath, tabId }: Props = $props();
+	let { filePath, tabId, edit = false }: Props = $props();
 
 	interface FileData {
 		path: string;
@@ -122,6 +128,7 @@
 	// Markdown mode: preview (read-only), editor (WYSIWYG), raw (CodeMirror source)
 	type MarkdownMode = 'preview' | 'editor' | 'raw';
 	let markdownMode = $state<MarkdownMode>('preview');
+	let openedInEdit = $state(false);
 
 	// Rich text editor, lazy loaded
 	let RichTextEditor: typeof RichTextEditorType | null = $state(null);
@@ -334,6 +341,13 @@
 				if (fileData && !fileData.binary && fileData.content !== null) {
 					if (isMarkdown) {
 						// Preview handled by MarkdownRenderer component
+						if (edit && !openedInEdit) {
+							openedInEdit = true;
+							clearTabEdit(tabId);
+							requestAnimationFrame(() => {
+								enterEditMode();
+							});
+						}
 					} else if (isJson) {
 						try {
 							jsonData = JSON.parse(fileData.content);

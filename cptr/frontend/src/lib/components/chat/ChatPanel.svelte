@@ -100,6 +100,16 @@
 	const TTS_AUDIO_CACHE_LIMIT_BYTES = 20 * 1024 * 1024;
 	const TTS_MAX_PREFETCH = 2;
 
+	onMount(() => {
+		if (initialChatId || typeof sessionStorage === 'undefined') return;
+		const key = `cptr:intent:chatDraft:${workspace}`;
+		const draft = sessionStorage.getItem(key);
+		if (draft) {
+			inputText = draft;
+			sessionStorage.removeItem(key);
+		}
+	});
+
 	// ── Windowed rendering ──────────────────────────────────────
 	// Only render the last N turns to keep the DOM light for long chats.
 	// A "turn" is a user+assistant message pair, so 6 turns = 12 messages.

@@ -14,8 +14,7 @@
 	import AuthScreen from '$lib/components/AuthScreen.svelte';
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 	import UpdateToast from '$lib/components/UpdateToast.svelte';
-	import ConnectionMonitor from '$lib/components/ConnectionMonitor.svelte';
-	import { Toaster } from 'svelte-sonner';
+	import { Toaster, toast } from 'svelte-sonner';
 	import {
 		activeTab,
 		currentWorkspace,
@@ -50,6 +49,9 @@
 	let showSettings = $state(false);
 	let showUpdateToast = $state(false);
 	let showSetup = $state(false);
+	let connectionToast: string | number | undefined;
+	let applyingServiceWorkerUpdate = false;
+	const BROWSER_SW_CLEANUP_RELOAD = 'cptr:pwa:browser-sw-cleanup-reload';
 
 	// Auth state
 	type AuthState = 'checking' | 'needs_setup' | 'needs_login' | 'authenticated';
@@ -95,12 +97,23 @@
 		// iOS may fire 'scroll' instead of 'resize' when keyboard opens.
 		vv?.addEventListener('resize', syncKeyboardInset);
 		vv?.addEventListener('scroll', syncKeyboardInset);
+
+		if (isInstalledPwa()) {
+			registerServiceWorker().catch(() => {});
+		} else {
+			cleanBrowserServiceWorker().catch(() => {});
+		}
+		window.addEventListener('offline', showOfflineToast);
+		window.addEventListener('online', showOnlineToast);
+
 		return () => {
 			clearInterval(healthCheck);
 			document.documentElement.style.removeProperty('--keyboard-inset-bottom');
 			window.removeEventListener('resize', syncKeyboardInset);
 			vv?.removeEventListener('resize', syncKeyboardInset);
 			vv?.removeEventListener('scroll', syncKeyboardInset);
+			window.removeEventListener('offline', showOfflineToast);
+			window.removeEventListener('online', showOnlineToast);
 		};
 	});
 
@@ -231,6 +244,84 @@
 		} catch {
 			// Silently ignore (non-admin, network error, etc.)
 		}
+	}
+
+	function isInstalledPwa() {
+		const nav = navigator as Navigator & { standalone?: boolean };
+		return (
+			nav.standalone === true ||
+			window.matchMedia('(display-mode: standalone)').matches ||
+			window.matchMedia('(display-mode: window-controls-overlay)').matches
+		);
+	}
+
+	function showOfflineToast() {
+		if (connectionToast) return;
+		connectionToast = toast.error($t('pwa.unreachable'), { duration: Infinity });
+	}
+
+	function showOnlineToast() {
+		if (connectionToast) toast.dismiss(connectionToast);
+		connectionToast = undefined;
+		toast.success($t('pwa.connectionRestored'));
+	}
+
+	async function clearCptrCaches() {
+		if (!('caches' in window)) return;
+		const keys = await caches.keys();
+		await Promise.all(keys.filter((key) => key.startsWith('cptr-')).map((key) => caches.delete(key)));
+	}
+
+	function isCptrWorker(registration: ServiceWorkerRegistration) {
+		const script =
+			registration.active?.scriptURL ||
+			registration.waiting?.scriptURL ||
+			registration.installing?.scriptURL ||
+			'';
+		return script.endsWith('/service-worker.js');
+	}
+
+	async function cleanBrowserServiceWorker() {
+		if (!('serviceWorker' in navigator)) return;
+		const registrations = await navigator.serviceWorker.getRegistrations();
+		const cptrRegistrations = registrations.filter(isCptrWorker);
+		if (!cptrRegistrations.length) {
+			sessionStorage.removeItem(BROWSER_SW_CLEANUP_RELOAD);
+			return;
+		}
+
+		const hadController = !!navigator.serviceWorker.controller;
+		await Promise.all(cptrRegistrations.map((registration) => registration.unregister()));
+		await clearCptrCaches();
+		if (hadController && !sessionStorage.getItem(BROWSER_SW_CLEANUP_RELOAD)) {
+			sessionStorage.setItem(BROWSER_SW_CLEANUP_RELOAD, '1');
+			location.reload();
+		}
+	}
+
+	async function registerServiceWorker() {
+		if (!('serviceWorker' in navigator)) return;
+		const registration = await navigator.serviceWorker.register('/service-worker.js');
+		if (registration.waiting && navigator.serviceWorker.controller) {
+			applyServiceWorkerUpdate(registration);
+		}
+		registration.addEventListener('updatefound', () => {
+			const worker = registration.installing;
+			if (!worker) return;
+			worker.addEventListener('statechange', () => {
+				if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+					applyServiceWorkerUpdate(registration);
+				}
+			});
+		});
+		navigator.serviceWorker.addEventListener('controllerchange', () => {
+			if (applyingServiceWorkerUpdate) window.location.reload();
+		});
+	}
+
+	function applyServiceWorkerUpdate(registration: ServiceWorkerRegistration) {
+		applyingServiceWorkerUpdate = true;
+		registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -372,7 +463,6 @@
 	</div>
 {/if}
 
-<ConnectionMonitor />
 <Toaster
 	position="top-right"
 	theme="system"

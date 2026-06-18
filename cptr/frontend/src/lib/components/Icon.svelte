@@ -161,6 +161,11 @@
 		<path d="M1 17H23" />
 		<path d="M12 17V20" />
 		<path d="M9 20H15" />
+	{:else if name === 'phone'}
+		<path
+			d="M8 2.6C8 2.26863 8.26863 2 8.6 2H15.4C15.7314 2 16 2.26863 16 2.6V21.4C16 21.7314 15.7314 22 15.4 22H8.6C8.26863 22 8 21.7314 8 21.4V2.6Z"
+		/>
+		<path d="M11 18.5H13" />
 	{:else if name === 'chevron-left'}
 		<path d="M15 6L9 12L15 18" />
 	{:else if name === 'check'}

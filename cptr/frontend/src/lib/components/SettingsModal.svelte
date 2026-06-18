@@ -2,6 +2,7 @@
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import General from './Settings/General.svelte';
+	import PWA from './Settings/PWA.svelte';
 	import Account from './Settings/Account.svelte';
 	import Keyboard from './Settings/Keyboard.svelte';
 	import About from './Settings/About.svelte';
@@ -19,6 +20,7 @@
 
 	type Tab =
 		| 'general'
+		| 'pwa'
 		| 'keyboard'
 		| 'account'
 		| 'about'
@@ -47,6 +49,7 @@
 		{ id: 'general', label: $t('settings.general'), icon: 'settings' },
 		{ id: 'keyboard', label: $t('settings.keyboard'), icon: 'terminal' },
 		{ id: 'account', label: $t('settings.account'), icon: 'user' },
+		{ id: 'pwa', label: 'PWA', icon: 'phone' },
 		{ id: 'about', label: $t('settings.about'), icon: 'info' }
 	]);
 
@@ -118,6 +121,8 @@
 	<div class="flex-1 overflow-y-auto min-h-0 p-4 md:px-5">
 		{#if activeTab === 'general'}
 			<General />
+		{:else if activeTab === 'pwa'}
+			<PWA />
 		{:else if activeTab === 'keyboard'}
 			<Keyboard />
 		{:else if activeTab === 'account'}
