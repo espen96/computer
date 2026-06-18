@@ -121,6 +121,22 @@ async def delete_workspace(request: Request, path: str = Query(...)):
     return {"status": "deleted"}
 
 
+# ── Chat workspaces ─────────────────────────────────────────
+
+
+@router.get("/chats")
+async def get_chat_workspaces(request: Request):
+    """Return list of all chat-mode workspaces for the sidebar."""
+    user_id = await _get_user_id(request)
+    if not user_id:
+        return []
+    workspaces = await Workspace.get_chat_workspaces(user_id)
+    return [
+        {"path": ws.path, "name": ws.name, "created_at": ws.created_at, "updated_at": ws.updated_at}
+        for ws in workspaces
+    ]
+
+
 # ── Welcome ──────────────────────────────────────────────────────
 
 

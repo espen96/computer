@@ -260,7 +260,10 @@
 	$effect(() => {
 		const ws = $currentWorkspace;
 		if (ws) {
-			systemEvents.connect(ws.fileBrowserCwd || ws.path);
+			// Skip WebSocket for temp chat workspaces (path not on disk yet)
+			if (!ws.path.includes('/temp-')) {
+				systemEvents.connect(ws.fileBrowserCwd || ws.path);
+			}
 			socketStore.connect();
 			bindGlobalChatListener();
 		} else {

@@ -100,12 +100,43 @@ function createDefaultGroup(): EditorGroup {
 	};
 }
 
+function createChatModeGroup(includeFiles = true): EditorGroup {
+	const chatTabId = nextId();
+	const tabs: Tab[] = [
+		{ id: chatTabId, type: 'chat', label: 'New Chat', path: `new-${Date.now()}`, permanent: true }
+	];
+	if (includeFiles) {
+		const filesTabId = nextId();
+		tabs.push({ id: filesTabId, type: 'files', label: 'Files', permanent: true });
+	}
+	return {
+		id: 'default',
+		tabs,
+		activeTabId: chatTabId
+	};
+}
+
 function createDefaultWorkspace(path: string): WorkspaceState {
 	const name = path.split('/').filter(Boolean).pop() || path;
 	return {
 		name,
 		path,
 		groups: [createDefaultGroup()],
+		activeGroupId: 'default',
+		splitDirection: 'horizontal',
+		splitRatio: 0.5,
+		fileBrowserCwd: path
+	};
+}
+
+export function createChatModeWorkspace(path: string): WorkspaceState {
+	const name = path.split('/').filter(Boolean).pop() || path;
+	const group = createChatModeGroup();
+	chatModeTabs.update((s) => new Set([...s, group.activeTabId]));
+	return {
+		name,
+		path,
+		groups: [group],
 		activeGroupId: 'default',
 		splitDirection: 'horizontal',
 		splitRatio: 0.5,
@@ -174,6 +205,12 @@ export const selectedModelId = writable<string>('');
 
 /** Saved workspace path order for sidebar drag-reorder. */
 export const workspaceOrder = writable<string[]>([]);
+
+/** List of chat-mode workspaces for the sidebar. */
+export const chatList = writable<{ path: string; name: string; created_at: number; updated_at: number }[]>([]);
+
+/** Set of tab IDs that are in chat mode (auto-generated workspace). */
+export const chatModeTabs = writable<Set<string>>(new Set());
 
 // ── Derived stores ──────────────────────────────────────────────
 
@@ -402,6 +439,18 @@ export async function loadWorkspaceList(): Promise<void> {
 	}
 }
 
+// ── Load chat-mode workspaces (called once at app startup) ─────
+
+export async function loadChatList(): Promise<void> {
+	try {
+		const { getChatWorkspaces } = await import('$lib/apis/state');
+		const list = await getChatWorkspaces();
+		chatList.set(list || []);
+	} catch {
+		chatList.set([]);
+	}
+}
+
 // ── Load a specific workspace (called when URL changes) ─────────
 
 export async function loadWorkspace(path: string): Promise<void> {
@@ -452,11 +501,14 @@ export async function loadWorkspace(path: string): Promise<void> {
 			});
 		} else {
 			// First time opening this workspace, create defaults
-			currentWorkspace.set(createDefaultWorkspace(path));
+			// Chat-mode workspaces get a chat tab instead of Files tab
+			const isChatMode = path.includes('chat-workspaces');
+			currentWorkspace.set(isChatMode ? createChatModeWorkspace(path) : createDefaultWorkspace(path));
 		}
 	} catch {
 		// Error loading, create fresh workspace
-		currentWorkspace.set(createDefaultWorkspace(path));
+		const isChatMode = path.includes('chat-workspaces');
+		currentWorkspace.set(isChatMode ? createChatModeWorkspace(path) : createDefaultWorkspace(path));
 	}
 }
 
@@ -465,6 +517,7 @@ export async function loadWorkspace(path: string): Promise<void> {
 export async function initState(): Promise<void> {
 	await loadPreferences();
 	await loadWorkspaceList();
+	await loadChatList();
 	stateLoaded.set(true);
 	subscribeForPersistence();
 }
@@ -543,6 +596,14 @@ export async function removeWorkspace(path: string): Promise<void> {
 	if (ws?.path === path) {
 		currentWorkspace.set(null);
 	}
+}
+
+/** Remove a chat-mode workspace by chat ID. */
+export async function removeChatWorkspace(chatId: string): Promise<void> {
+	const { deleteChat } = await import('$lib/apis/chat');
+	await deleteChat(chatId);
+	// Reload the chat list to reflect the deletion
+	await loadChatList();
 }
 
 /** Reorder workspaces in the sidebar (from drag-and-drop). */
@@ -749,6 +810,40 @@ export function openChatTab(chatId?: string, targetGroupId?: string): void {
 	}));
 }
 
+/** Open a new chat tab in chat mode (auto-generated workspace). */
+export function openChatModeTab(targetGroupId?: string): void {
+	const ws = get(currentWorkspace);
+	if (!ws) return;
+
+	const gid = targetGroupId ?? ws.activeGroupId;
+	const group = ws.groups.find((g) => g.id === gid);
+	if (!group) return;
+
+	// Reuse an existing new/pending chat tab if one is open
+	const existing = group.tabs.find(
+		(t) => t.type === 'chat' && (t.path?.startsWith('new-') || t.path?.startsWith('pending-'))
+	);
+	if (existing) {
+		setActiveTab(existing.id, gid);
+		chatModeTabs.update((s) => new Set([...s, existing.id]));
+		return;
+	}
+
+	const newTab: Tab = {
+		id: nextId(),
+		type: 'chat',
+		label: 'New Chat',
+		path: `new-${Date.now()}`
+	};
+
+	chatModeTabs.update((s) => new Set([...s, newTab.id]));
+
+	updateGroupTabs(gid, (tabs) => ({
+		tabs: [...tabs, newTab],
+		activeTabId: newTab.id
+	}));
+}
+
 export function closeTab(tabId: string, groupId?: string): void {
 	const ws = get(currentWorkspace);
 	if (!ws) return;
@@ -769,6 +864,11 @@ export function closeTab(tabId: string, groupId?: string): void {
 	// Clean up streaming indicator for closed chat tabs
 	if (tab.type === 'chat') {
 		streamingChatTabs.update((s) => {
+			const n = new Set(s);
+			n.delete(tabId);
+			return n;
+		});
+		chatModeTabs.update((s) => {
 			const n = new Set(s);
 			n.delete(tabId);
 			return n;

@@ -39,6 +39,8 @@ export interface SendMessageResult {
 	queued?: boolean;
 	user_message?: ChatMessageRow;
 	assistant_message?: ChatMessageRow;
+	workspace?: string;
+	workspace_name?: string;
 }
 
 export interface ChatSendParams {
@@ -46,6 +48,7 @@ export interface ChatSendParams {
 	plan_mode?: boolean;
 	request_params?: Record<string, unknown>;
 	voice_mode?: boolean;
+	chat_mode?: boolean;
 }
 
 // ── Queries ─────────────────────────────────────────────────
@@ -88,7 +91,8 @@ export const sendMessage = (
 			parent_id: parentId ?? null,
 			regeneration_prompt: regenerationPrompt,
 			files: files ?? [],
-			params
+			params,
+			chat_mode: params.chat_mode ?? false
 		})
 	);
 

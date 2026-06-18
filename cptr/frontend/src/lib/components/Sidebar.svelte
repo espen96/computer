@@ -12,6 +12,8 @@
 		appVersion,
 		showChangelog,
 		showSearch,
+		chatList,
+		removeChatWorkspace,
 	} from '$lib/stores';
 	import Sortable from 'sortablejs';
 	import Icon from './Icon.svelte';
@@ -253,6 +255,86 @@
 		}
 	}
 
+	// ── Chat-mode workspace helpers ──────────────────────────────
+
+	interface ChatDateGroup {
+		label: string;
+		chats: typeof $chatList;
+	}
+
+	let expandedChatGroups = $state<Set<string>>(new Set(['today', 'yesterday', 'previous7Days', 'previous30Days', 'older']));
+
+	function toggleChatGroup(label: string) {
+		const next = new Set(expandedChatGroups);
+		if (next.has(label)) {
+			next.delete(label);
+		} else {
+			next.add(label);
+		}
+		expandedChatGroups = next;
+	}
+
+	function groupChatsByDate(chats: typeof $chatList): ChatDateGroup[] {
+		const now = new Date();
+		const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+		const yesterdayStart = todayStart - 86400000;
+		const weekStart = todayStart - 7 * 86400000;
+		const monthStart = todayStart - 30 * 86400000;
+
+		const groups: Record<string, typeof $chatList> = {
+			today: [],
+			yesterday: [],
+			previous7Days: [],
+			previous30Days: [],
+			older: []
+		};
+
+		for (const chat of chats) {
+			// Backend stores seconds, JS uses milliseconds
+			const ts = (chat.updated_at || chat.created_at) * 1000;
+			if (ts >= todayStart) {
+				groups.today.push(chat);
+			} else if (ts >= yesterdayStart) {
+				groups.yesterday.push(chat);
+			} else if (ts >= weekStart) {
+				groups.previous7Days.push(chat);
+			} else if (ts >= monthStart) {
+				groups.previous30Days.push(chat);
+			} else {
+				groups.older.push(chat);
+			}
+		}
+
+		const result: ChatDateGroup[] = [];
+		if (groups.today.length) result.push({ label: 'today', chats: groups.today });
+		if (groups.yesterday.length) result.push({ label: 'yesterday', chats: groups.yesterday });
+		if (groups.previous7Days.length) result.push({ label: 'previous7Days', chats: groups.previous7Days });
+		if (groups.previous30Days.length) result.push({ label: 'previous30Days', chats: groups.previous30Days });
+		if (groups.older.length) result.push({ label: 'older', chats: groups.older });
+		return result;
+	}
+
+	const chatDateGroups = $derived(groupChatsByDate($chatList));
+
+	function handleChatItemClick(chat: typeof $chatList[0]) {
+		goto(`/?workspace=${encodeURIComponent(chat.path)}`);
+		if (typeof window !== 'undefined' && window.innerWidth < 768) {
+			sidebarOpen.set(false);
+		}
+	}
+
+	function handleNewChatMode() {
+		// Navigate to home with a flag that triggers new chat creation
+		goto('/?newChat=1');
+		if (typeof window !== 'undefined' && window.innerWidth < 768) {
+			sidebarOpen.set(false);
+		}
+	}
+
+	async function handleDeleteChatMode(chatId: string) {
+		await removeChatWorkspace(chatId);
+	}
+
 	onMount(() => {
 		// Enable drag-reorder on non-touch devices
 		if (wsListEl && !isTouchDevice()) {
@@ -359,6 +441,70 @@
 				<Icon name="clock" size={14} />
 				<span class="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap">{$t('automations.title')}</span>
 			</a>
+		</div>
+		{/if}
+
+		<!-- Chats section header -->
+		{#if $chatEnabled}
+		<div class="flex items-center justify-between h-8 pl-3.5 pr-1.5 shrink-0">
+			<span class="text-xs text-gray-400 dark:text-gray-500">{$t('sidebar.chats')}</span>
+			<button
+				class="flex items-center justify-center w-7 h-7 rounded-lg text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors duration-100"
+				onclick={handleNewChatMode}
+				aria-label={$t('sidebar.newChat')}
+				use:tooltip={$t('sidebar.newChat')}
+			>
+				<Icon name="plus" size={14} />
+			</button>
+		</div>
+
+		<!-- Chat list -->
+		<div class="overflow-y-auto px-1.5 max-h-[40%]">
+			{#if $chatList.length === 0}
+				<div class="flex flex-col items-center justify-center py-8">
+					<p class="text-xs text-gray-400 dark:text-gray-600">{$t('sidebar.noChats')}</p>
+				</div>
+			{:else}
+				{#each chatDateGroups as group (group.label)}
+					<div class="mb-1">
+						<button
+							class="flex items-center gap-1 w-full h-6 px-2 text-[10px] font-medium text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors duration-75 uppercase tracking-wider"
+							onclick={() => toggleChatGroup(group.label)}
+						>
+							<span
+								class="inline-block transition-transform duration-150"
+								style="transform: rotate({expandedChatGroups.has(group.label) ? '90deg' : '0deg'})"
+							>
+								<Icon name="chevron-right" size={9} />
+							</span>
+							{$t(`sidebar.chatGroup.${group.label}`)}
+							<span class="text-gray-300 dark:text-gray-700 font-normal normal-case ml-0.5">{group.chats.length}</span>
+						</button>
+						{#if expandedChatGroups.has(group.label)}
+							{#each group.chats as chat (chat.path)}
+								<div
+									class="group flex items-center gap-1.5 w-full h-7 px-2 rounded-md cursor-pointer transition-colors duration-75
+										hover:bg-gray-50 dark:hover:bg-white/3
+										{chat.path === currentPath ? 'bg-gray-200/50 dark:bg-white/8' : ''}"
+									role="button"
+									tabindex="0"
+									onclick={() => handleChatItemClick(chat)}
+									onkeydown={(e) => { if (e.key === 'Enter') handleChatItemClick(chat); }}
+								>
+									<span class="flex-1 text-xs text-gray-500 dark:text-gray-500 truncate min-w-0">{chat.name}</span>
+									<button
+										class="flex items-center justify-center w-5 h-5 rounded shrink-0 text-gray-300 dark:text-gray-700 hover:text-gray-500 dark:hover:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/8 opacity-0 group-hover:opacity-100 transition-all duration-75"
+										onclick={(e) => { e.stopPropagation(); handleDeleteChatMode(chat.path.split('/').pop() || ''); }}
+										aria-label={$t('sidebar.remove')}
+									>
+										<Icon name="trash" size={10} />
+									</button>
+								</div>
+							{/each}
+						{/if}
+					</div>
+				{/each}
+			{/if}
 		</div>
 		{/if}
 

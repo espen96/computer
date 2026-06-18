@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import {
 		getChat,
 		getChats,
@@ -31,7 +32,10 @@
 		planMode,
 		streamingBehavior,
 		selectedModelId,
-		requestParams
+		requestParams,
+		loadChatList,
+		loadWorkspace,
+		removeWorkspace
 	} from '$lib/stores';
 	import {
 		ttsEnabled,
@@ -63,8 +67,12 @@
 		workspace: string;
 		chatId?: string;
 		tabId?: string;
+		chatMode?: boolean;
 	}
-	let { workspace, chatId: initialChatId, tabId }: Props = $props();
+	let { workspace: workspaceProp, chatId: initialChatId, tabId, chatMode = false }: Props = $props();
+
+	// Reactive workspace path — updates when parent changes it after chat creation
+	let workspace = $derived(workspaceProp);
 
 	let inputText = $state('');
 	let chatId = $state<string | null>(initialChatId ?? null);
@@ -594,6 +602,7 @@
 			request_params: get(requestParams)
 		};
 		if (get(voiceModeEnabled)) params.voice_mode = true;
+		if (chatMode) params.chat_mode = true;
 		return params;
 	}
 
@@ -723,6 +732,29 @@
 
 			if (isNew && tabId) {
 				updateTab(tabId, result.chat_id, text.slice(0, 40) || $t('chat.fallbackTitle'));
+			}
+
+			// Chat mode: update workspace path after first message
+			if (chatMode && result.workspace && result.workspace !== workspace) {
+				const oldPath = workspace;
+				const newWorkspace = result.workspace;
+				const newName = result.workspace_name || $t('chat.fallbackTitle');
+				// Update currentWorkspace path and name
+				currentWorkspace.update((ws) => {
+					if (!ws) return ws;
+					return { ...ws, path: newWorkspace, name: newName };
+				});
+				// Update URL to reflect new workspace path
+				const url = new URL(window.location.href);
+				url.searchParams.set('workspace', newWorkspace);
+				history.replaceState(history.state, '', url.pathname + url.search);
+				// Remove temp workspace from sidebar and refresh chat list
+				if (oldPath !== newWorkspace) {
+					removeWorkspace(oldPath).catch(() => {});
+				}
+				loadChatList();
+				// Reload workspace from server to get full state (Files tab etc.)
+				loadWorkspace(newWorkspace);
 			}
 		} catch (e) {
 			console.error('[chat] send error', e);
