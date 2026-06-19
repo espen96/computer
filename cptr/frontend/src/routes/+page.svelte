@@ -70,7 +70,9 @@
 	type LaunchQueueWindow = Window & {
 		__cptrLaunchQueueBound?: boolean;
 		launchQueue?: {
-			setConsumer: (consumer: (params: { files?: { getFile: () => Promise<File> }[] }) => void) => void;
+			setConsumer: (
+				consumer: (params: { files?: { getFile: () => Promise<File> }[] }) => void
+			) => void;
 		};
 	};
 
@@ -111,7 +113,9 @@
 		return null;
 	}
 
-	function webCptrIntent(raw: string | null): { intent: string | null; params: URLSearchParams } | null {
+	function webCptrIntent(
+		raw: string | null
+	): { intent: string | null; params: URLSearchParams } | null {
 		if (!raw) return null;
 		let decoded = raw;
 		try {
@@ -315,10 +319,6 @@
 		showPicker = false;
 		void handleIntent(intent);
 	}
-
-
-
-
 
 	$effect(() => {
 		const url = $page.url;
@@ -637,7 +637,7 @@
 					<div class="flex flex-col">
 						{#each welcomeData.recent.slice(0, 5) as item}
 							<button
-								class="flex items-center gap-3 py-1.5 group text-left transition-colors duration-100"
+								class="flex items-center gap-3 py-1.5 group text-left transition-colors duration-100 flex-col items-start"
 								onclick={() => quickOpen(item.path)}
 							>
 								<span
@@ -728,11 +728,7 @@
 						<!-- Persist all tab instances so state survives tab switches (like VS Code) -->
 						{#each group.tabs.filter((t) => t.type === 'file' && t.filePath) as tab (tab.id)}
 							<div class="persisted-tab" class:persisted-tab-hidden={tab.id !== group.activeTabId}>
-								<FileEditor
-									filePath={tab.filePath!}
-									tabId={tab.id}
-									edit={tab.edit === true}
-								/>
+								<FileEditor filePath={tab.filePath!} tabId={tab.id} edit={tab.edit === true} />
 							</div>
 						{/each}
 
@@ -760,7 +756,6 @@
 								<PortPreview port={tab.port!} />
 							</div>
 						{/each}
-
 
 						<!-- Fallback content for non-persisted states -->
 						{#if !groupTab || groupTab.type === 'files'}

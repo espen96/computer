@@ -117,7 +117,7 @@
 
 <Modal
 	{onclose}
-	class="w-full max-w-3xl mx-4 md:mx-0 flex flex-col md:flex-row max-h-[85vh] md:h-[560px]"
+	class="w-full max-w-3xl mx-4 md:mx-0 flex flex-col md:flex-row h-[100vh] md:h-[560px]"
 >
 	<nav
 		class="shrink-0 min-w-0 overflow-x-auto md:overflow-x-visible scrollbar-hidden border-b md:border-b-0 md:border-r border-gray-200 dark:border-white/6 md:w-[180px]"
