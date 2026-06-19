@@ -4,7 +4,7 @@
 import { fetchHandler, fetchJSON, jsonBody } from '$lib/apis';
 
 export const listDir = (path: string) =>
-	fetchJSON<{ entries: unknown[] }>(`/api/workspace/files?path=${encodeURIComponent(path)}`);
+	fetchJSON<{ path: string; entries: any[] }>(`/api/workspace/files?path=${encodeURIComponent(path)}`);
 
 export const readFile = (path: string) =>
 	fetchHandler(`/api/workspace/files/read?path=${encodeURIComponent(path)}`);
@@ -37,6 +37,6 @@ export const downloadArchive = (paths: string[]) =>
 	fetchHandler('/api/workspace/files/archive', { method: 'POST', ...jsonBody({ paths }) });
 
 export const searchFiles = (query: string, path: string) =>
-	fetchJSON(
+	fetchJSON<any>(
 		`/api/workspace/files/search?query=${encodeURIComponent(query)}&path=${encodeURIComponent(path)}`
 	);

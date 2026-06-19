@@ -208,7 +208,7 @@
 			fontSize: 13,
 			lineHeight: 1.3,
 			scrollback: 10000,
-			macOptionClickForceSelection: true,
+			macOptionClickForcesSelection: true,
 			theme: isDarkMode() ? darkTheme : lightTheme
 		});
 

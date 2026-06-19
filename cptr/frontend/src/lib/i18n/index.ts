@@ -76,7 +76,7 @@ i18next.on('languageChanged', (lng: string) => {
 });
 
 /** Reactive translation function: use as `$t('key')` or `$t('key', { count: 3 })` in templates. */
-export const t = derived(_tick, () => i18next.t.bind(i18next) as TFunction);
+export const t = derived(_tick, () => i18next.t.bind(i18next) as (key: string, options?: any) => string);
 
 /** Change the active locale. */
 export function changeLocale(lng: string): void {
