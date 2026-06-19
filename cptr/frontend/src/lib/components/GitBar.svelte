@@ -81,14 +81,6 @@
 	let isMaximized = $state(false);
 	let resizing = $state(false);
 	let containerEl = $state<HTMLElement | null>(null);
-
-	const workspacePath = $derived($activeWorkspace?.path ?? '');
-	const stagedFiles = $derived((gitStatus?.files ?? []).filter((f) => f.staged));
-	const unstagedFiles = $derived((gitStatus?.files ?? []).filter((f) => !f.staged));
-	const totalChanges = $derived((gitStatus?.files ?? []).length);
-	const allStaged = $derived(totalChanges > 0 && unstagedFiles.length === 0);
-	const someStaged = $derived(stagedFiles.length > 0 && unstagedFiles.length > 0);
-
 	let gitStatus = $derived(
 		gitStatusStore.status as {
 			is_repo: boolean;
@@ -100,6 +92,13 @@
 			files: GitFile[];
 		} | null
 	);
+
+	const workspacePath = $derived($activeWorkspace?.path ?? '');
+	const stagedFiles = $derived((gitStatus?.files ?? []).filter((f) => f.staged));
+	const unstagedFiles = $derived((gitStatus?.files ?? []).filter((f) => !f.staged));
+	const totalChanges = $derived((gitStatus?.files ?? []).length);
+	const allStaged = $derived(totalChanges > 0 && unstagedFiles.length === 0);
+	const someStaged = $derived(stagedFiles.length > 0 && unstagedFiles.length > 0);
 
 	// Branch has never been pushed to remote
 	const needsPublish = $derived(!gitStatus?.upstream);

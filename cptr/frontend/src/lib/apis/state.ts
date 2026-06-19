@@ -39,7 +39,7 @@ export const renameWorkspace = (path: string, name: string) =>
 
 // ── Welcome page ────────────────────────────────────────────────
 
-export const getWelcome = () => fetchJSON<Record<string, unknown>>('/api/state/welcome');
+export const getWelcome = () => fetchJSON<any>('/api/state/welcome');
 
 // ── Chat workspaces ─────────────────────────────────────────────
 

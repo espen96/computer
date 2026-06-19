@@ -19,7 +19,7 @@
 	import { session } from '$lib/session';
 	import { t } from '$lib/i18n';
 
-	type Tab =
+	export type Tab =
 		| 'general'
 		| 'pwa'
 		| 'keyboard'

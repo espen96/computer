@@ -335,6 +335,8 @@
 	"keyboard.openSettings": "Открыть панель настроек",
 	"keyboard.toggleSplit": "Переключить разделённый вид редактора",
 	"keyboard.toggleSidebar": "Показать или скрыть боковую панель",
+	"keyboard.searchAll": "Поиск текста во всех файлах рабочей области",
+	"keyboard.voiceMemo": "Записать новую голосовую заметку",
 	"automations.title": "Автоматизации",
 	"automations.filter": "Фильтр...",
 	"automations.noMatches": "Нет совпадений",

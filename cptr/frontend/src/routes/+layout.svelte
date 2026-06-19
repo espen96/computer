@@ -62,9 +62,9 @@
 	let authMode = $state<'password' | 'pam'>('password');
 	let signupEnabled = $state(false);
 
-	onMount(async () => {
+	onMount(() => {
 		// Check auth first
-		await checkAuth();
+		checkAuth();
 
 		// Periodic session health check (every 30 min).
 		// This triggers the backend's sliding session refresh and
@@ -190,7 +190,7 @@
 				checkForUpdates();
 			} else {
 				const cfg = await getConfig();
-				authMode = cfg.auth_mode || 'password';
+				authMode = cfg.auth_mode === 'pam' ? 'pam' : 'password';
 				signupEnabled = cfg.signup_enabled || false;
 				authState = cfg.needs_setup ? 'needs_setup' : 'needs_login';
 			}

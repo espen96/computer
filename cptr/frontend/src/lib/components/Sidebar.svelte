@@ -21,7 +21,7 @@
 	import KeyPill from './KeyPill.svelte';
 	import DirectoryPicker from './DirectoryPicker.svelte';
 	import DropdownMenu from './DropdownMenu.svelte';
-	import SettingsModal from './SettingsModal.svelte';
+	import SettingsModal, { type Tab } from './SettingsModal.svelte';
 
 	import { tooltip } from '$lib/tooltip';
 	import { session, clearSession } from '$lib/session';
@@ -38,7 +38,7 @@
 	let showPicker = $state(false);
 	let showMenu = $state(false);
 	let showSettings = $state(false);
-	let settingsTab = $state<string>('general');
+	let settingsTab = $state<Tab>('general');
 	let wsMenuPath = $state<string | null>(null);
 	let wsMenuAnchor = $state<HTMLElement | null>(null);
 

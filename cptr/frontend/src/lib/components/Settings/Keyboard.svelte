@@ -20,9 +20,11 @@
 		nextTab: $t('keyboard.nextTab'),
 		prevTab: $t('keyboard.prevTab'),
 		quickOpen: $t('keyboard.quickOpen'),
+		searchAll: $t('keyboard.searchAll'),
 		openSettings: $t('keyboard.openSettings'),
 		toggleSplit: $t('keyboard.toggleSplit'),
-		toggleSidebar: $t('keyboard.toggleSidebar')
+		toggleSidebar: $t('keyboard.toggleSidebar'),
+		voiceMemo: $t('keyboard.voiceMemo')
 	});
 
 	/** Translated action labels for display. */
