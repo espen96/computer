@@ -125,12 +125,16 @@ export const refreshModelList = async (): Promise<ModelConfigResponse> =>
 
 export const updateModelConfig = (
 	modelId: string,
-	update: { is_active?: boolean; params?: Record<string, unknown> }
+	update: { is_active?: boolean; params?: Record<string, unknown>; name?: string; base_model?: string }
 ) =>
 	fetchJSON(`/api/admin/models/${encodeURIComponent(modelId)}/config`, {
 		...jsonBody(update),
 		method: 'PUT'
 	});
+
+export const deleteModelConfig = (modelId: string) =>
+	fetchJSON(`/api/admin/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
+
 
 // ── Tool Servers ────────────────────────────────────────────
 
