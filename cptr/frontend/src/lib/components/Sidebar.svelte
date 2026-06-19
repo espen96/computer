@@ -14,7 +14,7 @@
 		showSearch,
 		chatList,
 		renameChat,
-		loadChatList,
+		loadChatList
 	} from '$lib/stores';
 	import Sortable from 'sortablejs';
 	import Icon from './Icon.svelte';
@@ -359,7 +359,9 @@
 		chats: typeof $chatList;
 	}
 
-	let expandedChatGroups = $state<Set<string>>(new Set(['today', 'yesterday', 'previous7Days', 'previous30Days', 'older']));
+	let expandedChatGroups = $state<Set<string>>(
+		new Set(['today', 'yesterday', 'previous7Days', 'previous30Days', 'older'])
+	);
 
 	function toggleChatGroup(label: string) {
 		const next = new Set(expandedChatGroups);
@@ -405,15 +407,17 @@
 		const result: ChatDateGroup[] = [];
 		if (groups.today.length) result.push({ label: 'today', chats: groups.today });
 		if (groups.yesterday.length) result.push({ label: 'yesterday', chats: groups.yesterday });
-		if (groups.previous7Days.length) result.push({ label: 'previous7Days', chats: groups.previous7Days });
-		if (groups.previous30Days.length) result.push({ label: 'previous30Days', chats: groups.previous30Days });
+		if (groups.previous7Days.length)
+			result.push({ label: 'previous7Days', chats: groups.previous7Days });
+		if (groups.previous30Days.length)
+			result.push({ label: 'previous30Days', chats: groups.previous30Days });
 		if (groups.older.length) result.push({ label: 'older', chats: groups.older });
 		return result;
 	}
 
 	const chatDateGroups = $derived(groupChatsByDate($chatList));
 
-	function handleChatItemClick(chat: typeof $chatList[0]) {
+	function handleChatItemClick(chat: (typeof $chatList)[0]) {
 		goto(`/?workspace=${encodeURIComponent(chat.path)}`);
 		if (typeof window !== 'undefined' && window.innerWidth < 768) {
 			sidebarOpen.set(false);
@@ -534,84 +538,98 @@
 
 		<!-- Chats section header -->
 		{#if $chatEnabled}
-		<div class="flex items-center justify-between h-8 pl-3.5 pr-1.5 shrink-0">
-			<span class="text-xs text-gray-400 dark:text-gray-500">{$t('sidebar.chats')}</span>
-			<button
-				class="flex items-center justify-center w-7 h-7 rounded-lg text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors duration-100"
-				onclick={handleNewChatMode}
-				aria-label={$t('sidebar.newChat')}
-				use:tooltip={$t('sidebar.newChat')}
-			>
-				<Icon name="plus" size={14} />
-			</button>
-		</div>
+			<div class="flex items-center justify-between h-8 pl-3.5 pr-1.5 shrink-0">
+				<span class="text-xs text-gray-400 dark:text-gray-500">{$t('sidebar.chats')}</span>
+				<button
+					class="flex items-center justify-center w-7 h-7 rounded-lg text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors duration-100"
+					onclick={handleNewChatMode}
+					aria-label={$t('sidebar.newChat')}
+					use:tooltip={$t('sidebar.newChat')}
+				>
+					<Icon name="plus" size={14} />
+				</button>
+			</div>
 
-		<!-- Chat list -->
-		<div class="overflow-y-auto px-1.5 max-h-[40%]">
-			{#if $chatList.length === 0}
-				<div class="flex flex-col items-center justify-center py-8">
-					<p class="text-xs text-gray-400 dark:text-gray-600">{$t('sidebar.noChats')}</p>
-				</div>
-			{:else}
-				{#each chatDateGroups as group (group.label)}
-					<div class="mb-1">
-						<button
-							class="flex items-center gap-1 w-full h-6 px-2 text-[10px] font-medium text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors duration-75 uppercase tracking-wider"
-							onclick={() => toggleChatGroup(group.label)}
-						>
-							<span
-								class="inline-block transition-transform duration-150"
-								style="transform: rotate({expandedChatGroups.has(group.label) ? '90deg' : '0deg'})"
+			<!-- Chat list -->
+			<div class="overflow-y-auto px-1.5 max-h-[40%]">
+				{#if $chatList.length === 0}
+					<div class="flex flex-col items-center justify-center py-8">
+						<p class="text-xs text-gray-400 dark:text-gray-600">{$t('sidebar.noChats')}</p>
+					</div>
+				{:else}
+					{#each chatDateGroups as group (group.label)}
+						<div class="mb-1">
+							<button
+								class="flex items-center gap-1 w-full h-6 px-2 text-[10px] font-medium text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors duration-75 uppercase tracking-wider"
+								onclick={() => toggleChatGroup(group.label)}
 							>
-								<Icon name="chevron-right" size={9} />
-							</span>
-							{$t(`sidebar.chatGroup.${group.label}`)}
-							<span class="text-gray-300 dark:text-gray-700 font-normal normal-case ml-0.5">{group.chats.length}</span>
-						</button>
-						{#if expandedChatGroups.has(group.label)}
-							{#each group.chats as chat (chat.path)}
-								<div
-									class="group flex items-center gap-1.5 w-full h-7 px-2 rounded-md cursor-pointer transition-colors duration-75
+								<span
+									class="inline-block transition-transform duration-150"
+									style="transform: rotate({expandedChatGroups.has(group.label)
+										? '90deg'
+										: '0deg'})"
+								>
+									<Icon name="chevron-right" size={9} />
+								</span>
+								{$t(`sidebar.chatGroup.${group.label}`)}
+								<span class="text-gray-300 dark:text-gray-700 font-normal normal-case ml-0.5"
+									>{group.chats.length}</span
+								>
+							</button>
+							{#if expandedChatGroups.has(group.label)}
+								{#each group.chats as chat (chat.path)}
+									<div
+										class="group flex items-center gap-1.5 w-full h-7 px-2 rounded-md cursor-pointer transition-colors duration-75
 										hover:bg-gray-50 dark:hover:bg-white/3
 										{chat.path === currentPath ? 'bg-gray-200/50 dark:bg-white/8' : ''}"
-									role="button"
-									tabindex="0"
-									onclick={() => handleChatItemClick(chat)}
-									onkeydown={(e) => { if (e.key === 'Enter') handleChatItemClick(chat); }}
-								>
-									{#if renamingChatPath === chat.path}
-										<input
-											bind:this={renameChatInputEl}
-											bind:value={renameChatValue}
-											type="text"
-											class="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-gray-900 dark:text-white"
-											onclick={(e) => e.stopPropagation()}
-											onkeydown={(e) => {
-												if (e.key === 'Enter') { e.preventDefault(); commitRenameChat(); }
-												if (e.key === 'Escape') { e.preventDefault(); cancelRenameChat(); }
-											}}
-											onblur={commitRenameChat}
-											spellcheck="false"
-										/>
-									{:else}
-										<span class="flex-1 text-xs text-gray-500 dark:text-gray-500 truncate min-w-0">{chat.name}</span>
-									{/if}
-									<span
-										class="flex items-center justify-center w-4 h-4 shrink-0 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-75"
 										role="button"
-										tabindex="-1"
-										onclick={(e) => openChatMenu(e, chat.path)}
-										aria-label={$t('a11y.chatOptions')}
+										tabindex="0"
+										onclick={() => handleChatItemClick(chat)}
+										onkeydown={(e) => {
+											if (e.key === 'Enter') handleChatItemClick(chat);
+										}}
 									>
-										<Icon name="three-dots" size={11} />
-									</span>
-								</div>
-							{/each}
-						{/if}
-					</div>
-				{/each}
-			{/if}
-		</div>
+										{#if renamingChatPath === chat.path}
+											<input
+												bind:this={renameChatInputEl}
+												bind:value={renameChatValue}
+												type="text"
+												class="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-gray-900 dark:text-white"
+												onclick={(e) => e.stopPropagation()}
+												onkeydown={(e) => {
+													if (e.key === 'Enter') {
+														e.preventDefault();
+														commitRenameChat();
+													}
+													if (e.key === 'Escape') {
+														e.preventDefault();
+														cancelRenameChat();
+													}
+												}}
+												onblur={commitRenameChat}
+												spellcheck="false"
+											/>
+										{:else}
+											<span class="flex-1 text-xs text-gray-500 dark:text-gray-500 truncate min-w-0"
+												>{chat.name}</span
+											>
+										{/if}
+										<span
+											class="flex items-center justify-center w-4 h-4 shrink-0 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-75"
+											role="button"
+											tabindex="-1"
+											onclick={(e) => openChatMenu(e, chat.path)}
+											aria-label={$t('a11y.chatOptions')}
+										>
+											<Icon name="three-dots" size={11} />
+										</span>
+									</div>
+								{/each}
+							{/if}
+						</div>
+					{/each}
+				{/if}
+			</div>
 		{/if}
 
 		<!-- Workspace section header -->
@@ -677,8 +695,14 @@
 									class="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-gray-900 dark:text-white"
 									onclick={(e) => e.stopPropagation()}
 									onkeydown={(e) => {
-										if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-										if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+										if (e.key === 'Enter') {
+											e.preventDefault();
+											commitRename();
+										}
+										if (e.key === 'Escape') {
+											e.preventDefault();
+											cancelRename();
+										}
 									}}
 									onblur={commitRename}
 									spellcheck="false"
@@ -890,7 +914,7 @@
 		left: 0;
 		top: 0;
 		bottom: 0;
-		width: 220px;
+		width: 75%;
 		z-index: 50;
 		display: flex;
 		flex-direction: column;

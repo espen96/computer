@@ -164,11 +164,11 @@
 					</div>
 				{/each}
 			</div>
-		{/if}
+		{/if}|
 		<div class="flex justify-end">
-			<div class="max-w-[90%] px-4 py-2 rounded-3xl bg-gray-50 dark:bg-white/[0.06]">
+			<div class="max-w-[90%] px-4 py-2 rounded-2xl bg-gray-50 dark:bg-white/[0.08]">
 				<div
-					class="text-[13px] leading-relaxed text-gray-900 dark:text-gray-200 whitespace-pre-wrap break-words"
+					class="text-[0.875rem] leading-relaxed text-gray-900 dark:text-gray-200 whitespace-pre-wrap break-words"
 				>
 					{#each parsedContent as segment}{#if segment.type === 'text'}{segment.value}{:else}{@const isDir =
 								segment.path.endsWith('/')}{@const cleanPath = isDir

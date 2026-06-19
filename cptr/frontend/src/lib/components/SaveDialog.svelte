@@ -128,7 +128,7 @@
 >
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="w-full max-w-[520px] mx-4 bg-white dark:bg-[#111] dark:border dark:border-white/8 rounded-3xl overflow-hidden shadow-2xl max-h-[420px] flex flex-col"
+		class="w-full max-w-[520px] mx-4 bg-white dark:bg-[#111] dark:border dark:border-white/8 rounded-2xl overflow-hidden shadow-2xl max-h-[420px] flex flex-col"
 		onmousedown={(e) => e.stopPropagation()}
 		onkeydown={() => {}}
 	>

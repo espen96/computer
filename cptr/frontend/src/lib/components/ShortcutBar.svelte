@@ -130,7 +130,7 @@
 	}
 
 	:global(.dark) .shortcut-bar {
-		background: #0a0a0a;
+		background: #141414;
 		border-top-color: rgba(255, 255, 255, 0.06);
 	}
 
