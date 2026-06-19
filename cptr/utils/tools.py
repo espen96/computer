@@ -102,7 +102,7 @@ def _rotate_log(log_path: str, log_file) -> tuple:
     with open(log_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    keep = lines[len(lines) // 2:]
+    keep = lines[len(lines) // 2 :]
 
     with open(log_path, "w", encoding="utf-8") as f:
         f.write(json.dumps({"type": "log_rotated", "ts": time.time()}) + "\n")
@@ -130,8 +130,17 @@ async def _collect_bg_output(task_id: str):
         if log_path:
             Path(log_path).parent.mkdir(parents=True, exist_ok=True)
             log_file = open(log_path, "a", encoding="utf-8")
-            entry = json.dumps({"type": "start", "command": task["command"],
-                                "pid": proc.pid, "ts": time.time()}) + "\n"
+            entry = (
+                json.dumps(
+                    {
+                        "type": "start",
+                        "command": task["command"],
+                        "pid": proc.pid,
+                        "ts": time.time(),
+                    }
+                )
+                + "\n"
+            )
             log_file.write(entry)
             log_file.flush()
             log_bytes += len(entry.encode("utf-8", errors="replace"))
@@ -157,12 +166,19 @@ async def _collect_bg_output(task_id: str):
                 task["output"].extend(chunk)
                 task["total_bytes"] += len(chunk)
                 if len(task["output"]) > 256 * 1024:
-                    task["output"] = task["output"][-256 * 1024:]
+                    task["output"] = task["output"][-256 * 1024 :]
 
             if log_file:
-                entry = json.dumps({"type": "output",
-                                    "data": chunk.decode(errors="replace"),
-                                    "ts": time.time()}) + "\n"
+                entry = (
+                    json.dumps(
+                        {
+                            "type": "output",
+                            "data": chunk.decode(errors="replace"),
+                            "ts": time.time(),
+                        }
+                    )
+                    + "\n"
+                )
                 entry_size = len(entry.encode("utf-8", errors="replace"))
                 if log_bytes + entry_size > _MAX_LOG_SIZE:
                     log_file, log_bytes = _rotate_log(log_path, log_file)
@@ -191,8 +207,7 @@ async def _collect_bg_output(task_id: str):
 
         if log_file:
             log_file.write(
-                json.dumps({"type": "end", "exit_code": exit_code,
-                            "ts": time.time()}) + "\n"
+                json.dumps({"type": "end", "exit_code": exit_code, "ts": time.time()}) + "\n"
             )
             log_file.close()
 
@@ -228,7 +243,14 @@ def _truncate_output(text: str, max_chars: int = 80_000) -> str:
 # ── Image support ───────────────────────────────────────────
 
 IMAGE_EXTENSIONS = {
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".bmp",
+    ".tiff",
+    ".tif",
 }
 
 _IMAGE_MAX_BYTES = 5 * 1024 * 1024  # 5 MB target for API payload
@@ -351,7 +373,9 @@ async def read_file(
                         e = min(total, end_line) if end_line > 0 else total
                         selected = lines[s:e]
                         numbered = [f"{i + s + 1}: {line}" for i, line in enumerate(selected)]
-                        return f"File: {path} | Lines {s + 1}-{e} of {total}\n" + "\n".join(numbered)
+                        return f"File: {path} | Lines {s + 1}-{e} of {total}\n" + "\n".join(
+                            numbered
+                        )
                     capped = lines[:800]
                     numbered = [f"{i + 1}: {line}" for i, line in enumerate(capped)]
                     header = f"File: {path} | Total lines: {total}"
@@ -603,12 +627,14 @@ async def create_file(
 
         rel_path = str(artifact_path.relative_to(Path(workspace)))
         display_title = artifact_type.replace("_", " ").title()
-        return json.dumps({
-            "artifact_type": artifact_type,
-            "title": display_title,
-            "path": rel_path,
-            "bytes": len(content),
-        })
+        return json.dumps(
+            {
+                "artifact_type": artifact_type,
+                "title": display_title,
+                "path": rel_path,
+                "bytes": len(content),
+            }
+        )
 
     if not path:
         return "Error: path is required when artifact_type is not set."
@@ -654,12 +680,14 @@ async def create_artifact(
 
     display_title = title or artifact_type.replace("_", " ").title()
     rel_path = str(artifact_path.relative_to(Path(workspace)))
-    return json.dumps({
-        "artifact_type": artifact_type,
-        "title": display_title,
-        "path": rel_path,
-        "bytes": len(content),
-    })
+    return json.dumps(
+        {
+            "artifact_type": artifact_type,
+            "title": display_title,
+            "path": rel_path,
+            "bytes": len(content),
+        }
+    )
 
 
 async def write_file(path: str, content: str, *, workspace: str) -> str:
@@ -882,14 +910,13 @@ async def run_command(
         status = "running"
 
     return (
-        f"Task {task_id}: {status}\n"
-        f"Command: {command}\n"
-        f"next_offset: {next_offset}\n"
-        f"---\n{output}"
+        f"Task {task_id}: {status}\nCommand: {command}\nnext_offset: {next_offset}\n---\n{output}"
     )
 
 
-async def check_task(task_id: str, offset: int = 0, wait: Optional[int] = None, *, workspace: str) -> str:
+async def check_task(
+    task_id: str, offset: int = 0, wait: Optional[int] = None, *, workspace: str
+) -> str:
     """Check status and recent output of a background task.
     :param task_id: The task ID returned by run_command.
     :param offset: Byte offset from previous check. Pass next_offset from the last response to get only new output.
@@ -1092,14 +1119,16 @@ async def create_automation(
             is_active=True,
             created_at=now_ns,
         )
-        return json.dumps({
-            "status": "success",
-            "id": automation.id,
-            "name": automation.name,
-            "model_id": automation.model_id,
-            "is_active": automation.is_active,
-            "next_runs": next_n_runs_ns(rrule),
-        })
+        return json.dumps(
+            {
+                "status": "success",
+                "id": automation.id,
+                "name": automation.name,
+                "model_id": automation.model_id,
+                "is_active": automation.is_active,
+                "next_runs": next_n_runs_ns(rrule),
+            }
+        )
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -1129,16 +1158,18 @@ async def list_automations(
         )
         automations = []
         for item in items:
-            automations.append({
-                "id": item.id,
-                "name": item.name,
-                "prompt_snippet": item.prompt[:100] + ("..." if len(item.prompt) > 100 else ""),
-                "model_id": item.model_id,
-                "rrule": item.rrule,
-                "is_active": item.is_active,
-                "last_run_at": item.last_run_at,
-                "next_runs": next_n_runs_ns(item.rrule),
-            })
+            automations.append(
+                {
+                    "id": item.id,
+                    "name": item.name,
+                    "prompt_snippet": item.prompt[:100] + ("..." if len(item.prompt) > 100 else ""),
+                    "model_id": item.model_id,
+                    "rrule": item.rrule,
+                    "is_active": item.is_active,
+                    "last_run_at": item.last_run_at,
+                    "next_runs": next_n_runs_ns(item.rrule),
+                }
+            )
         return json.dumps({"automations": automations, "total": total})
     except Exception as e:
         return json.dumps({"error": str(e)})
@@ -1193,12 +1224,14 @@ async def update_automation(
             return json.dumps({"error": "Failed to update automation"})
 
         final_rrule = rrule or automation.rrule
-        return json.dumps({
-            "status": "success",
-            "id": automation_id,
-            "updated_fields": list(kwargs.keys()),
-            "next_runs": next_n_runs_ns(final_rrule),
-        })
+        return json.dumps(
+            {
+                "status": "success",
+                "id": automation_id,
+                "updated_fields": list(kwargs.keys()),
+                "next_runs": next_n_runs_ns(final_rrule),
+            }
+        )
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -1224,12 +1257,14 @@ async def toggle_automation(
         if not toggled:
             return json.dumps({"error": "Failed to toggle automation"})
 
-        return json.dumps({
-            "status": "success",
-            "id": toggled.id,
-            "name": toggled.name,
-            "is_active": toggled.is_active,
-        })
+        return json.dumps(
+            {
+                "status": "success",
+                "id": toggled.id,
+                "name": toggled.name,
+                "is_active": toggled.is_active,
+            }
+        )
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -1299,12 +1334,16 @@ async def _get_browser_config() -> dict:
             "enabled": await Config.get("browser.enabled") or False,
             "provider": await Config.get("browser.provider") or "local",
             "cdp_url": await Config.get("browser.cdp_url") or "http://localhost:9222",
-            "auto_launch": await Config.get("browser.auto_launch") if await Config.get("browser.auto_launch") is not None else True,
+            "auto_launch": await Config.get("browser.auto_launch")
+            if await Config.get("browser.auto_launch") is not None
+            else True,
             "session_timeout": int(await Config.get("browser.session_timeout_minutes") or 10),
             "firecrawl_api_key": await Config.get("browser.firecrawl_api_key") or "",
-            "firecrawl_base_url": await Config.get("browser.firecrawl_base_url") or "https://api.firecrawl.dev",
+            "firecrawl_base_url": await Config.get("browser.firecrawl_base_url")
+            or "https://api.firecrawl.dev",
             "browser_use_api_key": await Config.get("browser.browser_use_api_key") or "",
-            "browser_use_base_url": await Config.get("browser.browser_use_base_url") or "https://api.browser-use.com",
+            "browser_use_base_url": await Config.get("browser.browser_use_base_url")
+            or "https://api.browser-use.com",
         }
     except Exception:
         return {"enabled": False, "provider": "local"}
@@ -1348,7 +1387,9 @@ async def browser_navigate(url: str, *, __context__: dict) -> str:
             return "Error: Browser-Use API key not configured. Set it in Settings > Browser."
         from cptr.utils.browser.browser_use import browse
 
-        result = await browse(f"Navigate to {url} and describe what you see", key, cfg.get("browser_use_base_url", ""))
+        result = await browse(
+            f"Navigate to {url} and describe what you see", key, cfg.get("browser_use_base_url", "")
+        )
         return f"Navigated to {url} (via Browser-Use)\n\n{result}"
 
     # Local CDP
@@ -1402,8 +1443,7 @@ async def browser_type(ref: str, text: str, *, __context__: dict) -> str:
 
 
 async def browser_screenshot(*, __context__: dict) -> str:
-    """Take a screenshot of the current browser page. Saves the image to the workspace.
-    """
+    """Take a screenshot of the current browser page. Saves the image to the workspace."""
     cfg = await _get_browser_config()
     if cfg.get("provider", "local") != "local":
         return "Error: browser_screenshot requires Local CDP provider."
@@ -1500,8 +1540,7 @@ async def _get_subagent_config() -> dict:
         "max_concurrent": int(await Config.get("subagents.max_concurrent") or 3),
         "max_iterations": int(await Config.get("subagents.max_iterations") or 30),
         "max_output": int(await Config.get("subagents.max_output") or 30_000),
-        "system_prompt": (await Config.get("subagents.system_prompt"))
-        or _DEFAULT_SUBAGENT_SYSTEM,
+        "system_prompt": (await Config.get("subagents.system_prompt")) or _DEFAULT_SUBAGENT_SYSTEM,
     }
 
 
@@ -1702,9 +1741,7 @@ async def _load_tool_servers() -> dict:
                 if not command:
                     continue
 
-                client = await stdio_manager.get_client(
-                    server_id, command, args, env, cwd
-                )
+                client = await stdio_manager.get_client(server_id, command, args, env, cwd)
                 for spec in await client.list_tool_specs():
                     prefixed = f"{server_id}_{spec['name']}"
                     tools[prefixed] = {
@@ -1835,7 +1872,7 @@ _TYPE_MAP = {str: "string", int: "integer", bool: "boolean", float: "number"}
 
 def _unwrap_optional(hint):
     """If hint is Optional[X] (Union[X, None]), return X."""
-    args = getattr(hint, '__args__', None)
+    args = getattr(hint, "__args__", None)
     if args and type(None) in args:
         real = [a for a in args if a is not type(None)]
         if len(real) == 1:

@@ -287,9 +287,7 @@
 			<!-- ID + Type -->
 			<div class="flex gap-3">
 				<div class="flex-1">
-					<label class="text-[10px] text-gray-400 dark:text-gray-600"
-						>{$t('toolServers.id')}</label
-					>
+					<label class="text-[10px] text-gray-400 dark:text-gray-600">{$t('toolServers.id')}</label>
 					<input
 						type="text"
 						placeholder={$t('toolServers.idPlaceholder')}
@@ -447,7 +445,9 @@
 			<label class="text-[10px] text-gray-400 dark:text-gray-600 mt-2"
 				>{$t('toolServers.headers')}</label
 			>
-			<p class="text-[10px] text-gray-300 dark:text-gray-700 mb-0.5">{$t('toolServers.headersHint')}</p>
+			<p class="text-[10px] text-gray-300 dark:text-gray-700 mb-0.5">
+				{$t('toolServers.headersHint')}
+			</p>
 			<textarea
 				placeholder={'{"X-Custom-Header": "value"}'}
 				bind:value={formHeaders}
@@ -456,7 +456,6 @@
 				rows="2"
 				class="block w-full bg-transparent text-[13px] text-gray-700 dark:text-gray-300 placeholder:text-gray-300 dark:placeholder:text-gray-700 outline-none py-0.5 font-mono resize-none"
 			></textarea>
-
 
 			<!-- Verify result -->
 			{#if verifyResult?.ok && verifyResult.tools}

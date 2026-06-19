@@ -27,12 +27,14 @@
 
 	let dirty = $derived(
 		webhookUrl.trim() !== webhookUrlOriginal ||
-		($session?.role === 'admin' && chatWorkspaceRoot.trim() !== chatWorkspaceRootOriginal)
+			($session?.role === 'admin' && chatWorkspaceRoot.trim() !== chatWorkspaceRootOriginal)
 	);
 
 	onMount(async () => {
 		try {
-			const data = await fetchJSON<{ config: Record<string, any> }>('/api/admin/config/notifications');
+			const data = await fetchJSON<{ config: Record<string, any> }>(
+				'/api/admin/config/notifications'
+			);
 			const url = data.config?.['notifications.webhook_url'] || '';
 			webhookUrl = url;
 			webhookUrlOriginal = url;
@@ -118,12 +120,16 @@
 		</select>
 
 		<!-- Notifications -->
-		<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">{$t('general.notifications')}</h3>
+		<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">
+			{$t('general.notifications')}
+		</h3>
 
 		<div class="flex flex-col gap-2.5">
 			<!-- Browser notifications toggle -->
 			<label class="flex items-center justify-between cursor-pointer">
-				<span class="text-xs text-gray-600 dark:text-gray-400">{$t('general.browserNotifications')}</span>
+				<span class="text-xs text-gray-600 dark:text-gray-400"
+					>{$t('general.browserNotifications')}</span
+				>
 				<ToggleSwitch value={$notificationsEnabled} onchange={() => toggleNotifications()} />
 			</label>
 			<p class="text-[11px] text-gray-400 dark:text-gray-600 -mt-1">
@@ -132,7 +138,9 @@
 
 			<!-- Sound toggle -->
 			<label class="flex items-center justify-between cursor-pointer">
-				<span class="text-xs text-gray-600 dark:text-gray-400">{$t('general.notificationSound')}</span>
+				<span class="text-xs text-gray-600 dark:text-gray-400"
+					>{$t('general.notificationSound')}</span
+				>
 				<ToggleSwitch value={$notificationSound} onchange={(v) => notificationSound.set(v)} />
 			</label>
 
@@ -157,14 +165,18 @@
 		{#if $session?.role === 'admin'}
 			<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">{$t('general.updates')}</h3>
 			<label class="flex items-center justify-between cursor-pointer">
-				<span class="text-xs text-gray-600 dark:text-gray-400">{$t('general.updateNotifications')}</span>
+				<span class="text-xs text-gray-600 dark:text-gray-400"
+					>{$t('general.updateNotifications')}</span
+				>
 				<ToggleSwitch value={$showUpdateToastPref} onchange={(v) => showUpdateToastPref.set(v)} />
 			</label>
 			<p class="text-[11px] text-gray-400 dark:text-gray-600 mt-1">
 				{$t('general.updateNotificationsDesc')}
 			</p>
 
-			<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">{$t('general.chatWorkspaceRoot')}</h3>
+			<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">
+				{$t('general.chatWorkspaceRoot')}
+			</h3>
 			<div>
 				<label class="text-xs text-gray-600 dark:text-gray-400" for="chat-workspace-root">
 					{$t('general.chatWorkspaceRootPath')}
@@ -197,9 +209,7 @@
 			{/each}
 		</div>
 		<p class="text-[11px] text-gray-400 dark:text-gray-600 mt-1">
-			{$streamingBehavior === 'queue'
-				? $t('general.queueDesc')
-				: $t('general.interruptDesc')}
+			{$streamingBehavior === 'queue' ? $t('general.queueDesc') : $t('general.interruptDesc')}
 		</p>
 	</div>
 

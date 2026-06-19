@@ -423,9 +423,7 @@ class UpdateModelConfigRequest(BaseModel):
 
 
 @router.put("/models/{model_id:path}/config")
-async def update_model_config(
-    model_id: str, body: UpdateModelConfigRequest, request: Request
-):
+async def update_model_config(model_id: str, body: UpdateModelConfigRequest, request: Request):
     """Update config for a specific model (or '*' for global defaults)."""
     require_admin(request)
     all_config = await Config.get(CONFIG_KEY_CHAT_MODELS) or {}
@@ -466,7 +464,6 @@ async def delete_model_config(model_id: str, request: Request):
         all_config.pop(model_id)
         await Config.upsert({CONFIG_KEY_CHAT_MODELS: all_config})
     return {"ok": True}
-
 
 
 # ── Tool servers ─────────────────────────────────────────────

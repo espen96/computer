@@ -104,4 +104,3 @@
 <p class="text-[11px] text-gray-300 dark:text-gray-700 pt-4">
 	{$t('about.createdBy')}
 </p>
-

@@ -72,7 +72,12 @@
 		tabId?: string;
 		chatMode?: boolean;
 	}
-	let { workspace: workspaceProp, chatId: initialChatId, tabId, chatMode = false }: Props = $props();
+	let {
+		workspace: workspaceProp,
+		chatId: initialChatId,
+		tabId,
+		chatMode = false
+	}: Props = $props();
 
 	// Reactive workspace path — updates when parent changes it after chat creation
 	let workspace = $derived(workspaceProp);
@@ -299,9 +304,8 @@
 			if (data.chat.title) {
 				if (tabId) {
 					chatTitle = data.chat.title;
-	
-					updateTab(tabId, id, data.chat.title);
 
+					updateTab(tabId, id, data.chat.title);
 				}
 				currentWorkspace.update((ws) => {
 					if (ws && ws.path.includes('chat-workspaces') && ws.path.endsWith(id)) {
@@ -309,8 +313,7 @@
 					}
 					return ws;
 				});
-			contextUsage = data.context_usage ?? null;
-
+				contextUsage = data.context_usage ?? null;
 			}
 		} finally {
 			if (isInitialLoad && gen === loadGeneration) loading = false;

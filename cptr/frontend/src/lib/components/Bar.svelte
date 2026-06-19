@@ -55,7 +55,7 @@
 	const displayName = $derived.by(() => {
 		if (!$activeWorkspace) return '';
 		if ($activeWorkspace.path.includes('chat-workspaces')) {
-			const chatTab = $activeWorkspace.groups.flatMap(g => g.tabs).find(t => t.type === 'chat');
+			const chatTab = $activeWorkspace.groups.flatMap((g) => g.tabs).find((t) => t.type === 'chat');
 			return chatTab ? chatTab.label : $activeWorkspace.name;
 		}
 		return $activeWorkspace.name;

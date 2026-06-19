@@ -136,8 +136,7 @@ async def ensure_browser(port: int = 9222) -> str:
             return base_url
 
     raise RuntimeError(
-        f"Chrome launched but CDP not responding on port {port} after 10s. "
-        f"Binary: {chrome_path}"
+        f"Chrome launched but CDP not responding on port {port} after 10s. Binary: {chrome_path}"
     )
 
 

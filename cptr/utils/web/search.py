@@ -52,18 +52,18 @@ async def web_search_handler(query: str) -> str:
 
     exa_key = await _get_key("EXA_API_KEY", "web.exa_api_key")
     perplexity_key = await _get_key("PERPLEXITY_API_KEY", "web.perplexity_api_key")
-    perplexity_url = (
-        await _get_config("web.perplexity_base_url")
-    ) or os.environ.get("PERPLEXITY_BASE_URL", "")
+    perplexity_url = (await _get_config("web.perplexity_base_url")) or os.environ.get(
+        "PERPLEXITY_BASE_URL", ""
+    )
     tavily_key = await _get_key("TAVILY_API_KEY", "web.tavily_api_key")
     brave_key = await _get_key("BRAVE_API_KEY", "web.brave_api_key")
     cc_key = await _get_key("CHAT_COMPLETIONS_SEARCH_API_KEY", "web.chat_completions_api_key")
-    cc_url = (
-        await _get_config("web.chat_completions_base_url")
-    ) or os.environ.get("CHAT_COMPLETIONS_SEARCH_BASE_URL", "")
-    cc_model = (
-        await _get_config("web.chat_completions_model")
-    ) or os.environ.get("CHAT_COMPLETIONS_SEARCH_MODEL", "")
+    cc_url = (await _get_config("web.chat_completions_base_url")) or os.environ.get(
+        "CHAT_COMPLETIONS_SEARCH_BASE_URL", ""
+    )
+    cc_model = (await _get_config("web.chat_completions_model")) or os.environ.get(
+        "CHAT_COMPLETIONS_SEARCH_MODEL", ""
+    )
 
     # Explicit provider mode
     if provider != "auto":
@@ -75,7 +75,11 @@ async def web_search_handler(query: str) -> str:
             elif provider == "perplexity":
                 if not perplexity_key:
                     return "Error: Perplexity API key not configured."
-                return await perplexity.search(query, perplexity_key, base_url=perplexity_url) if perplexity_url else await perplexity.search(query, perplexity_key)
+                return (
+                    await perplexity.search(query, perplexity_key, base_url=perplexity_url)
+                    if perplexity_url
+                    else await perplexity.search(query, perplexity_key)
+                )
             elif provider == "tavily":
                 if not tavily_key:
                     return "Error: Tavily API key not configured."
@@ -102,7 +106,9 @@ async def web_search_handler(query: str) -> str:
         providers.append(("exa", lambda: exa.search(query, exa_key)))
     if perplexity_key:
         _pplx_kw = {"base_url": perplexity_url} if perplexity_url else {}
-        providers.append(("perplexity", lambda: perplexity.search(query, perplexity_key, **_pplx_kw)))
+        providers.append(
+            ("perplexity", lambda: perplexity.search(query, perplexity_key, **_pplx_kw))
+        )
     if tavily_key:
         providers.append(("tavily", lambda: tavily.search(query, tavily_key)))
     if brave_key:

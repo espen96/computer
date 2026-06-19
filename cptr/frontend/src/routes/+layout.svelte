@@ -404,7 +404,9 @@
 	const workspaceName = $derived.by(() => {
 		if (!$currentWorkspace) return '';
 		if ($currentWorkspace.path.includes('chat-workspaces')) {
-			const chatTab = $currentWorkspace.groups.flatMap(g => g.tabs).find(t => t.type === 'chat');
+			const chatTab = $currentWorkspace.groups
+				.flatMap((g) => g.tabs)
+				.find((t) => t.type === 'chat');
 			return chatTab ? chatTab.label : $currentWorkspace.name;
 		}
 		return $currentWorkspace.name;
@@ -418,13 +420,15 @@
 		href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:wght@400;500&display=swap"
 		rel="stylesheet"
 	/>
-	<title>{$activeTab && $activeTab.type !== 'files'
-		? $currentWorkspace
-			? `${$activeTab.label} / ${workspaceName} / cptr`
-			: `${$activeTab.label} / cptr`
-		: $currentWorkspace
-			? `${workspaceName} / cptr`
-			: 'cptr'}</title>
+	<title
+		>{$activeTab && $activeTab.type !== 'files'
+			? $currentWorkspace
+				? `${$activeTab.label} / ${workspaceName} / cptr`
+				: `${$activeTab.label} / cptr`
+			: $currentWorkspace
+				? `${workspaceName} / cptr`
+				: 'cptr'}</title
+	>
 	<title
 		>{$activeTab && $activeTab.type !== 'files'
 			? $currentWorkspace

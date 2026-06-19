@@ -66,6 +66,4 @@ class Config(Base):
         except Exception:
             import logging
 
-            logging.getLogger(__name__).warning(
-                "Failed to sync config to TOML", exc_info=True
-            )
+            logging.getLogger(__name__).warning("Failed to sync config to TOML", exc_info=True)

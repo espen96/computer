@@ -74,7 +74,8 @@
 		<span class="truncate max-w-[160px]"
 			>{$chatModels.length === 0
 				? $t('modelSelector.noModels')
-				: $chatModels.find((m) => m.id === selectedModel)?.name || $t('modelSelector.selectModel')}</span
+				: $chatModels.find((m) => m.id === selectedModel)?.name ||
+					$t('modelSelector.selectModel')}</span
 		>
 		{#if $chatModels.length > 0}
 			<svg
@@ -96,11 +97,11 @@
 			items={menuItems}
 			anchor={btnEl}
 			onclose={() => (open = false)}
-			preferAbove={preferAbove}
+			{preferAbove}
 			forceAbove={preferAbove}
 			maxHeight={selectorMaxHeight}
 			className="w-48"
-			align={align}
+			{align}
 		>
 			{#snippet header()}
 				<div class="flex items-center gap-1.5 h-6 px-2 mt-0.5">
@@ -127,7 +128,9 @@
 				</div>
 			{/snippet}
 			{#snippet empty()}
-				<div class="px-3 py-1.5 text-[11px] text-gray-400 dark:text-gray-500 text-center">{$t('modelSelector.noMatches')}</div>
+				<div class="px-3 py-1.5 text-[11px] text-gray-400 dark:text-gray-500 text-center">
+					{$t('modelSelector.noMatches')}
+				</div>
 			{/snippet}
 		</DropdownMenu>
 	{/if}

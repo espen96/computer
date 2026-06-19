@@ -230,7 +230,6 @@ async def has_any_user() -> bool:
         return result.scalar_one_or_none() is not None
 
 
-
 # ── PAM ──────────────────────────────────────────────────────
 
 

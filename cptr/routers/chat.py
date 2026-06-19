@@ -191,7 +191,6 @@ async def get_models(request: Request):
     return {"models": models, "default": default_model}
 
 
-
 async def _fetch_provider_models(conn: dict) -> list[str]:
     """Discover models from a provider's /models endpoint."""
     import httpx
@@ -223,7 +222,8 @@ async def _fetch_provider_models(conn: dict) -> list[str]:
                 else:
                     log.warning(
                         "Model auto-discovery failed for %s: HTTP %d",
-                        url, r.status_code,
+                        url,
+                        r.status_code,
                     )
 
         elif provider == "openai":
@@ -244,7 +244,8 @@ async def _fetch_provider_models(conn: dict) -> list[str]:
                 else:
                     log.warning(
                         "Model auto-discovery failed for %s: HTTP %d",
-                        url, r.status_code,
+                        url,
+                        r.status_code,
                     )
 
         else:
@@ -405,6 +406,7 @@ async def delete_chat(chat_id: str, request: Request):
         if ws and ws.is_chat:
             await Workspace.delete_by_path(user_id, workspace)
             import shutil
+
             await asyncio.to_thread(shutil.rmtree, workspace, True)
 
     await Chat.delete(chat_id)
@@ -436,6 +438,7 @@ async def rename_chat(chat_id: str, request: Request):
         await Workspace.rename(user_id, workspace, title)
 
     from cptr.socket.main import emit_to_user
+
     await emit_to_user(user_id, {"chat_id": chat_id, "title": title})
     return {"ok": True, "title": title}
 
@@ -704,7 +707,8 @@ async def approve_tool(chat_id: str, message_id: str, body: ApproveRequest, requ
 
         model_id = msg.model or ""
         result = await execute_tool(
-            call["name"], call.get("arguments", {}),
+            call["name"],
+            call.get("arguments", {}),
             {"workspace": chat.meta.get("workspace", ""), "user_id": user_id, "model_id": model_id},
         )
         call["status"] = "completed"
@@ -985,7 +989,6 @@ async def _resolve_connection(model_id: str, app_state=None) -> tuple[dict, str]
         custom_model = chat_models_config[model_id]
         if "base_model" in custom_model and custom_model["base_model"]:
             model_id = custom_model["base_model"]
-
 
     # Try prefix match first
     if "/" in model_id:

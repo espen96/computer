@@ -1,11 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import {
-		clearTabEdit,
-		markTabUnsaved,
-		updateTabFilePath,
-		activeWorkspace
-	} from '$lib/stores';
+	import { clearTabEdit, markTabUnsaved, updateTabFilePath, activeWorkspace } from '$lib/stores';
 	import { get } from 'svelte/store';
 	import { tooltip } from '$lib/tooltip';
 	import { readFile, writeFile } from '$lib/apis/files';
@@ -202,14 +197,20 @@
 		for (const change of changes) {
 			if (change.line < 1) continue;
 			const current = byLine.get(change.line);
-			byLine.set(change.line, current === 'added' || change.type === 'added' ? 'added' : 'modified');
+			byLine.set(
+				change.line,
+				current === 'added' || change.type === 'added' ? 'added' : 'modified'
+			);
 		}
 		return [...byLine.entries()]
 			.sort((a, b) => a[0] - b[0])
 			.map(([line, type]) => ({ line, type }));
 	}
 
-	function buildGitGutterMarkers(doc: EditorState['doc'], changes: GitLineChange[]): RangeSet<GutterMarker> {
+	function buildGitGutterMarkers(
+		doc: EditorState['doc'],
+		changes: GitLineChange[]
+	): RangeSet<GutterMarker> {
 		const builder = new RangeSetBuilder<GutterMarker>();
 		for (const change of normalizeGitLineChanges(changes)) {
 			if (change.line < 1 || change.line > doc.lines) continue;
@@ -246,9 +247,7 @@
 			}
 			return value;
 		},
-		provide: (field) => [
-			gutterLineClass.from(field, (value) => value.markers)
-		]
+		provide: (field) => [gutterLineClass.from(field, (value) => value.markers)]
 	});
 
 	function diffHunkStart(header: string): { oldStart: number; newStart: number } {
@@ -538,8 +537,7 @@
 	function diffBlockClass(type: DiffLine['type']): string {
 		if (type === 'added')
 			return 'bg-green-100 border-l-[3px] border-l-green-500 dark:bg-green-500/15 dark:border-l-green-400';
-		if (type === 'removed')
-			return 'bg-red-100 diff-gutter-removed dark:bg-red-500/15';
+		if (type === 'removed') return 'bg-red-100 diff-gutter-removed dark:bg-red-500/15';
 		return '';
 	}
 
@@ -642,13 +640,18 @@
 		const status = gitStatusStore.status;
 		const data = fileData;
 		const content = data?.content;
-		if (!data || data.binary || isBinaryPreview || isUntitled || content === null || content === undefined) {
+		if (
+			!data ||
+			data.binary ||
+			isBinaryPreview ||
+			isUntitled ||
+			content === null ||
+			content === undefined
+		) {
 			return;
 		}
 
-		const statusKey = status
-			? `${status.is_repo}:${gitFilesSignature(status.files)}`
-			: 'pending';
+		const statusKey = status ? `${status.is_repo}:${gitFilesSignature(status.files)}` : 'pending';
 		const key = `${wsPath}:${data.path}:${content.length}:${statusKey}`;
 		if (key === lastGitLineRefreshKey) return;
 		lastGitLineRefreshKey = key;
@@ -1466,8 +1469,6 @@
 		font-size: 12px;
 		color: var(--color-gray-500);
 	}
-
-
 
 	/* ── Diff view ────────────────────────────────────────── */
 

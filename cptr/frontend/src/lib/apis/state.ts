@@ -35,7 +35,10 @@ export const deleteWorkspace = (path: string) =>
 	fetchHandler(`/api/state/workspace?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
 
 export const renameWorkspace = (path: string, name: string) =>
-	fetchHandler(`/api/state/workspace/name?path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`, { method: 'PATCH' });
+	fetchHandler(
+		`/api/state/workspace/name?path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`,
+		{ method: 'PATCH' }
+	);
 
 // ── Welcome page ────────────────────────────────────────────────
 
@@ -50,5 +53,4 @@ export interface ChatWorkspace {
 	updated_at: number;
 }
 
-export const getChatWorkspaces = () =>
-	fetchJSON<ChatWorkspace[]>('/api/state/chats');
+export const getChatWorkspaces = () => fetchJSON<ChatWorkspace[]>('/api/state/chats');

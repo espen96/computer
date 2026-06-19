@@ -57,9 +57,7 @@ async def put_preferences(request: Request):
 
 
 @router.patch("/workspace/name")
-async def patch_workspace_name(
-    request: Request, path: str = Query(...), name: str = Query(...)
-):
+async def patch_workspace_name(request: Request, path: str = Query(...), name: str = Query(...)):
     """Update just the display name of a workspace."""
     user_id = await _get_user_id(request)
     if not user_id:
@@ -128,9 +126,7 @@ async def delete_workspace(request: Request, path: str = Query(...)):
         import shutil
 
         async with await get_db() as db:
-            chats = (await db.execute(
-                select(Chat).where(Chat.user_id == user_id)
-            )).scalars().all()
+            chats = (await db.execute(select(Chat).where(Chat.user_id == user_id))).scalars().all()
             for chat in chats:
                 meta = chat.meta or {}
                 if meta.get("workspace") == path:

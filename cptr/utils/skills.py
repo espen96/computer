@@ -53,10 +53,11 @@ _MAX_SCAN_DIRS = 2000
 @dataclass
 class SkillMeta:
     """Tier 1: lightweight metadata for the catalog."""
+
     name: str
     description: str
-    location: str       # absolute path to SKILL.md
-    source: str         # "workspace" or "global"
+    location: str  # absolute path to SKILL.md
+    source: str  # "workspace" or "global"
     # Optional spec fields
     license: str | None = None
     compatibility: str | None = None
@@ -67,7 +68,8 @@ class SkillMeta:
 @dataclass
 class SkillContent(SkillMeta):
     """Tier 2: full instructions + resource listing."""
-    body: str = ""              # markdown body after frontmatter
+
+    body: str = ""  # markdown body after frontmatter
     resources: list[str] = field(default_factory=list)  # relative paths of bundled files
 
 
@@ -108,7 +110,7 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
             # If value contains a colon and isn't already quoted
             if ":" in val and not (val.startswith('"') or val.startswith("'")):
                 indent = len(line) - len(line.lstrip())
-                fixed_lines.append(f"{' ' * indent}{key_part.strip()}: \"{val}\"")
+                fixed_lines.append(f'{" " * indent}{key_part.strip()}: "{val}"')
                 continue
         fixed_lines.append(line)
 
@@ -149,7 +151,9 @@ def validate_name(name: str, parent_dir: str) -> list[str]:
         warnings.append(f"name exceeds 64 characters ({len(name)})")
 
     if not _NAME_RE.match(name):
-        warnings.append(f"name '{name}' contains invalid characters (must be lowercase alphanumeric + hyphens)")
+        warnings.append(
+            f"name '{name}' contains invalid characters (must be lowercase alphanumeric + hyphens)"
+        )
 
     if "--" in name:
         warnings.append(f"name '{name}' contains consecutive hyphens")
@@ -211,16 +215,18 @@ def _scan_skills_dir(skills_dir: Path, source: str) -> list[SkillMeta]:
             for w in warnings:
                 logger.warning("[skills] %s: %s", skill_md, w)
 
-            results.append(SkillMeta(
-                name=name,
-                description=description[:1024],
-                location=str(skill_md.resolve()),
-                source=source,
-                license=fm.get("license"),
-                compatibility=fm.get("compatibility"),
-                metadata=fm.get("metadata") if isinstance(fm.get("metadata"), dict) else None,
-                allowed_tools=fm.get("allowed-tools"),
-            ))
+            results.append(
+                SkillMeta(
+                    name=name,
+                    description=description[:1024],
+                    location=str(skill_md.resolve()),
+                    source=source,
+                    license=fm.get("license"),
+                    compatibility=fm.get("compatibility"),
+                    metadata=fm.get("metadata") if isinstance(fm.get("metadata"), dict) else None,
+                    allowed_tools=fm.get("allowed-tools"),
+                )
+            )
 
     except PermissionError:
         logger.debug("[skills] Permission denied scanning %s", skills_dir)
@@ -252,7 +258,8 @@ def discover_skills(workspace: str) -> list[SkillMeta]:
                 else:
                     logger.debug(
                         "[skills] Skipping duplicate '%s' from %s (already found)",
-                        skill.name, skill.location,
+                        skill.name,
+                        skill.location,
                     )
 
     # 2. Global skills (user-level, available across all workspaces)

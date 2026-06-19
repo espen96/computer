@@ -50,9 +50,7 @@ class InterceptHandler(logging.Handler):
             frame = frame.f_back
             depth += 1
 
-        loguru_logger.opt(depth=depth, exception=record.exc_info).log(
-            level, record.getMessage()
-        )
+        loguru_logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
 
 def _json_stdout_sink(message) -> None:
@@ -83,9 +81,7 @@ def _json_stdout_sink(message) -> None:
 def _text_stdout_format(record) -> str:
     extra = ""
     visible_extra = {
-        k: v
-        for k, v in record["extra"].items()
-        if k not in {"auditable", "upstream_diagnostic"}
+        k: v for k, v in record["extra"].items() if k not in {"auditable", "upstream_diagnostic"}
     }
     if visible_extra:
         extra = " - {extra[extra_json]}"

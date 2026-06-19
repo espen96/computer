@@ -45,12 +45,16 @@
 			icon: 'folder',
 			active: ws.path === workspace,
 			check: true,
-			onclick: () => { workspace = ws.path; }
+			onclick: () => {
+				workspace = ws.path;
+			}
 		}))
 	);
 
 	let selectedWsName = $derived(
-		$workspaceList.find((w) => w.path === workspace)?.name || workspace.split('/').pop() || $t('automationModal.selectWorkspace')
+		$workspaceList.find((w) => w.path === workspace)?.name ||
+			workspace.split('/').pop() ||
+			$t('automationModal.selectWorkspace')
 	);
 
 	async function handleSubmit() {
@@ -103,7 +107,9 @@
 
 		<!-- Prompt -->
 		<div class="px-5 pb-2">
-			<div class="mb-1 text-[11px] text-gray-400 dark:text-gray-500">{$t('automationModal.instructions')}</div>
+			<div class="mb-1 text-[11px] text-gray-400 dark:text-gray-500">
+				{$t('automationModal.instructions')}
+			</div>
 			<textarea
 				class="w-full text-xs bg-transparent outline-none placeholder:text-gray-300 dark:placeholder:text-gray-700 text-gray-700 dark:text-gray-300 resize-none"
 				bind:value={prompt}
@@ -131,7 +137,15 @@
 				>
 					<Icon name="folder" size={12} />
 					<span class="truncate max-w-[120px]">{selectedWsName}</span>
-					<svg class="w-3 h-3 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+					<svg
+						class="w-3 h-3 opacity-50"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
 						<polyline points="6 9 12 15 18 9" />
 					</svg>
 				</button>
@@ -151,7 +165,11 @@
 					onclick={handleSubmit}
 					disabled={saving || !name.trim() || !prompt.trim() || !modelId || !workspace}
 				>
-					{saving ? $t('automationModal.saving') : automation ? $t('automationModal.save') : $t('automationModal.createBtn')}
+					{saving
+						? $t('automationModal.saving')
+						: automation
+							? $t('automationModal.save')
+							: $t('automationModal.createBtn')}
 				</button>
 			</div>
 		</div>

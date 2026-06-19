@@ -5,7 +5,16 @@ from __future__ import annotations
 import time
 import uuid
 
-from sqlalchemy import BigInteger, Boolean, Column, ForeignKey, Text, UniqueConstraint, select, delete
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    ForeignKey,
+    Text,
+    UniqueConstraint,
+    select,
+    delete,
+)
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import relationship
 
@@ -136,7 +145,9 @@ class Workspace(Base):
             return list(result.scalars().all())
 
     @staticmethod
-    async def upsert_chat(user_id: str, path: str, name: str, data: dict | None = None) -> Workspace:
+    async def upsert_chat(
+        user_id: str, path: str, name: str, data: dict | None = None
+    ) -> Workspace:
         """Create or update a chat-mode workspace."""
         async with await get_db() as db:
             result = await db.execute(

@@ -37,7 +37,8 @@ export const getGitStatusFresh = (root: string): Promise<any> => {
 export const getGitLog = (root: string, limit = 30): Promise<any> =>
 	fetchJSON<any>(`/api/git/log?root=${encodeURIComponent(root)}&limit=${limit}`);
 
-export const getGitDiff = (params: string): Promise<any> => fetchJSON<any>(`/api/git/diff?${params}`);
+export const getGitDiff = (params: string): Promise<any> =>
+	fetchJSON<any>(`/api/git/diff?${params}`);
 
 export const getGitShow = (root: string, ref: string): Promise<any> =>
 	fetchJSON<any>(`/api/git/show?root=${encodeURIComponent(root)}&ref=${encodeURIComponent(ref)}`);
@@ -60,9 +61,11 @@ export const discardChanges = (root: string, files: string[]): Promise<any> =>
 export const gitCommit = (root: string, message: string): Promise<any> =>
 	fetchJSON<any>('/api/git/commit', jsonBody({ root, message }));
 
-export const gitPull = (root: string): Promise<any> => fetchJSON<any>('/api/git/pull', jsonBody({ root }));
+export const gitPull = (root: string): Promise<any> =>
+	fetchJSON<any>('/api/git/pull', jsonBody({ root }));
 
-export const gitFetch = (root: string): Promise<any> => fetchJSON<any>('/api/git/fetch', jsonBody({ root }));
+export const gitFetch = (root: string): Promise<any> =>
+	fetchJSON<any>('/api/git/fetch', jsonBody({ root }));
 
 export const gitPush = (
 	root: string,
@@ -73,7 +76,8 @@ export const gitPush = (
 	}: { force?: boolean; set_upstream?: boolean; branch?: string } = {}
 ): Promise<any> => fetchJSON<any>('/api/git/push', jsonBody({ root, force, set_upstream, branch }));
 
-export const gitUncommit = (root: string): Promise<any> => fetchJSON<any>('/api/git/uncommit', jsonBody({ root }));
+export const gitUncommit = (root: string): Promise<any> =>
+	fetchJSON<any>('/api/git/uncommit', jsonBody({ root }));
 
 export const gitStash = (root: string, message?: string): Promise<any> =>
 	fetchJSON<any>('/api/git/stash', jsonBody({ root, message }));

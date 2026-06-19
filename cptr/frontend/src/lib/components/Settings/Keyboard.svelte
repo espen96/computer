@@ -104,7 +104,9 @@
 
 	<!-- Column headers -->
 	<div class="flex items-center gap-2 mb-0.5 px-1">
-		<span class="flex-1 text-[10px] font-medium text-gray-400 dark:text-gray-600">{$t('keyboard.command')}</span>
+		<span class="flex-1 text-[10px] font-medium text-gray-400 dark:text-gray-600"
+			>{$t('keyboard.command')}</span
+		>
 		<span class="w-[140px] text-[10px] font-medium text-gray-400 dark:text-gray-600 text-right"
 			>{$t('keyboard.keybinding')}</span
 		>
