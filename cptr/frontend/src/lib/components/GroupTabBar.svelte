@@ -306,12 +306,12 @@
 					oncontextmenu={(e) => handleContextMenu(e, tab)}
 				>
 					{#if tab.type === 'chat' && $streamingChatTabs.has(tab.id)}
-						<Spinner size={14} />
+						<Spinner size={14} />|
 					{:else}
 						<Icon name={tabIconName(tab)} size={14} />
 					{/if}
 					<span class="max-w-30 overflow-hidden text-ellipsis">
-						{tab.type === 'files' ? ($activeWorkspace?.name ?? $t('bar.files')) : tab.label}
+						{tab.type === 'files' ? 'Files' : tab.label}
 					</span>
 					{#if tab.unsaved}<span class="w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0"></span>{/if}
 					{#if !tab.permanent}
@@ -425,6 +425,4 @@
 	.group-tabs-row::-webkit-scrollbar {
 		display: none;
 	}
-
-
 </style>
