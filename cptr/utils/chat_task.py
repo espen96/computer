@@ -1109,7 +1109,7 @@ async def run_chat_task(
 
         chat_obj = await Chat.get_by_id(chat_id)
         chat_params = (chat_obj.meta or {}).get("params", {}) if chat_obj else {}
-        system = await _load_system_prompt(workspace, model)
+        system = await _load_system_prompt(workspace, model, user_id=user_id)
         messages, loaded_summary = await _load_message_history(chat_id, message_id)
         if loaded_summary:
             system += f"\n\n[CONVERSATION SUMMARY]\n{loaded_summary}"
@@ -1124,7 +1124,7 @@ async def run_chat_task(
 
         # Strip delegate_task from sub-agent chats (depth limit = 1)
         if chat_obj and (chat_obj.meta or {}).get("subagent"):
-            tools = [t for t in tools if t["name"] != "delegate_task"]
+            tools = [t for t in tools if t["name"] not in {"delegate_task", "update_memory"}]
 
         # Parse $skill-name mentions from the user message to auto-activate skills
         attached_skill_ids: list[str] = []
@@ -1157,7 +1157,7 @@ async def run_chat_task(
         plan_mode = chat_params.get("plan_mode", False)
         if plan_mode:
             tools = [t for t in tools if ALL_TOOLS.get(t["name"], {}).get("auto")]
-            tools = [t for t in tools if t["name"] != "delegate_task"]
+            tools = [t for t in tools if t["name"] not in {"delegate_task", "update_memory"}]
             # Inject create_artifact (only available in plan mode)
             tools.append(_fn_to_schema("create_artifact", create_artifact))
             messages.append({"role": "user", "content": PLAN_MODE_PROMPT})
@@ -1214,7 +1214,7 @@ async def run_chat_task(
                 loaded_summary = summary
 
                 # Append summary to system prompt (works for all providers)
-                system = await _load_system_prompt(workspace, model)
+                system = await _load_system_prompt(workspace, model, user_id=user_id)
                 system += f"\n\n[CONVERSATION SUMMARY]\n{summary}"
                 # Re-inject attached skills after compaction (protect from pruning)
                 if attached_skill_ids:
@@ -1698,6 +1698,22 @@ async def run_chat_task(
                 await post_webhook(webhook_url, title, preview)
         except Exception:
             logger.debug("[webhook] Error sending webhook for chat %s", chat_id[:8], exc_info=True)
+        # Best-effort post-turn memory review. Runs detached and never competes
+        # with queued user input processing.
+        try:
+            from cptr.utils.memory import review_memory_after_turn
+
+            await review_memory_after_turn(
+                user_id=user_id,
+                message_id=message_id,
+                workspace=workspace,
+                conversation_messages=messages,
+                assistant_reply=content,
+                model_connection=connection,
+                model=model,
+            )
+        except Exception:
+            logger.debug("[memory] Failed to review conversation", exc_info=True)
         # Process any pending user prompts or internal subagent results.
         try:
             await process_pending_chat_inputs(chat_id, user_id, workspace)

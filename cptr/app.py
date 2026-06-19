@@ -18,6 +18,7 @@ from cptr.routers import (
     gateway_router,
     git_router,
     images_router,
+    memory_router,
     proxy_router,
     search_router,
     skills_router,
@@ -265,6 +266,7 @@ app.include_router(files_router)
 app.include_router(gateway_router)
 app.include_router(git_router)
 app.include_router(images_router)
+app.include_router(memory_router)
 app.include_router(proxy_router)
 app.include_router(search_router)
 app.include_router(skills_router)

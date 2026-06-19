@@ -373,7 +373,7 @@
 		pending_inputs_processed?: boolean;
 		async_subagent_pending?: boolean;
 		title?: string;
-	}) {
+		}) {
 		// On the landing page, update the chat list in place from socket events
 		if (isLanding) {
 			const knownChat = previousChats.some((c) => c.id === data.chat_id);
@@ -1378,9 +1378,9 @@
 					{#if hasHiddenMessages}
 						<div bind:this={loadSentinelEl} class="h-1 w-full" aria-hidden="true"></div>
 					{/if}
-					{#each visiblePath as { msg, siblingIds, siblingIndex } (msg.id)}
-						{#if msg.role === 'user'}
-							<UserMessage
+						{#each visiblePath as { msg, siblingIds, siblingIndex } (msg.id)}
+							{#if msg.role === 'user'}
+								<UserMessage
 								content={msg.content}
 								meta={msg.meta}
 								{siblingIndex}

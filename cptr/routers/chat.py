@@ -325,7 +325,7 @@ async def _get_chat_context_usage(chat, model_id: str | None = None) -> dict | N
     messages, existing_summary = await _load_message_history(chat.id, message_id)
     workspace = (chat.meta or {}).get("workspace", "")
     model = model_id or await _infer_chat_model(chat.id)
-    system = await _load_system_prompt(workspace, model or "")
+    system = await _load_system_prompt(workspace, model or "", user_id=chat.user_id)
     if existing_summary:
         system += f"\n\n[CONVERSATION SUMMARY]\n{existing_summary}"
 

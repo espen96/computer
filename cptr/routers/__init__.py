@@ -12,6 +12,7 @@ from cptr.routers.events import router as events_router
 from cptr.routers.files import router as files_router
 from cptr.routers.git import router as git_router
 from cptr.routers.images import router as images_router
+from cptr.routers.memory import router as memory_router
 from cptr.routers.proxy import router as proxy_router
 from cptr.routers.search import router as search_router
 from cptr.routers.skills import router as skills_router
@@ -32,6 +33,7 @@ __all__ = [
     "gateway_router",
     "git_router",
     "images_router",
+    "memory_router",
     "proxy_router",
     "search_router",
     "skills_router",

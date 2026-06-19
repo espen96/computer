@@ -3,6 +3,7 @@
 	import Icon from './Icon.svelte';
 	import Modal from './Modal.svelte';
 	import General from './Settings/General.svelte';
+	import Memory from './Settings/Memory.svelte';
 	import PWA from './Settings/PWA.svelte';
 	import Account from './Settings/Account.svelte';
 	import Keyboard from './Settings/Keyboard.svelte';
@@ -22,6 +23,7 @@
 
 	type Tab =
 		| 'general'
+		| 'memory'
 		| 'pwa'
 		| 'keyboard'
 		| 'account'
@@ -51,6 +53,20 @@
 
 	type SettingsTab = { id: Tab; label: string; icon: string };
 
+	const adminTabIds: Tab[] = [
+		'users',
+		'connections',
+		'models',
+		'messaging',
+		'gateway',
+		'audio',
+		'images',
+		'web',
+		'toolservers',
+		'subagents',
+		'memory'
+	];
+
 	const personalTabs: SettingsTab[] = $derived.by(() => {
 		const tabs: SettingsTab[] = [
 			{ id: 'general', label: $t('settings.general'), icon: 'settings' },
@@ -72,13 +88,16 @@
 		{ id: 'images', label: $t('admin.images.title'), icon: 'image' },
 		{ id: 'web', label: $t('admin.web'), icon: 'globe' },
 		{ id: 'toolservers', label: $t('admin.toolServers'), icon: 'plug' },
-		{ id: 'subagents', label: $t('admin.subagents'), icon: 'user' }
+		{ id: 'subagents', label: $t('admin.subagents'), icon: 'user' },
+		{ id: 'memory', label: 'Memory', icon: 'brain' }
 	]);
 
 	onMount(() => {
 		showPwaSettings = isInstalledPwa();
 		if (showPwaSettings && initialTab === 'pwa') {
 			activeTab = 'pwa';
+		} else if (!$session || ($session.role !== 'admin' && adminTabIds.includes(initialTab))) {
+			activeTab = 'general';
 		} else if (initialTab !== 'pwa') {
 			activeTab = initialTab;
 		} else {
@@ -149,9 +168,11 @@
 	</nav>
 
 	<div class="flex-1 overflow-y-auto min-h-0 p-4 md:px-5">
-		{#if activeTab === 'general'}
-			<General />
-		{:else if activeTab === 'pwa' && showPwaSettings}
+			{#if activeTab === 'general'}
+				<General />
+			{:else if activeTab === 'memory'}
+				<Memory />
+			{:else if activeTab === 'pwa' && showPwaSettings}
 			<PWA />
 		{:else if activeTab === 'keyboard'}
 			<Keyboard />
