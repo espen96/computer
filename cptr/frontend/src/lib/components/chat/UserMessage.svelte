@@ -4,6 +4,9 @@
 	import { fileIconName } from '$lib/utils/fileIcon';
 	import { openFileTab, setFileBrowserCwd, setActiveTab } from '$lib/stores';
 	import { t } from '$lib/i18n';
+	import { fade, scale } from 'svelte/transition';
+
+	let activeModalImage = $state<string | null>(null);
 
 	interface Props {
 		content: string;
@@ -182,32 +185,62 @@
 	{:else}
 		<!-- Bubble: right-aligned -->
 		{#if meta?.files?.length > 0}
-			<div class="mb-1 w-full flex flex-col justify-end overflow-x-auto gap-1 flex-wrap">
-				{#each meta?.files ?? [] as upload}
-					<div class="self-end">
-						{#if upload.type === 'image'}
-							<img src={upload.url} alt={upload.name || 'image'} class="max-h-96 rounded-lg" />
-						{:else}
-							<div
-								class="relative group py-1.5 px-2 w-48 flex items-center gap-1.5 bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/5 rounded-xl text-left flex-shrink-0 shadow-sm"
+			{@const images = (meta?.files ?? []).filter((f: any) => f.type === 'image')}
+			{@const otherFiles = (meta?.files ?? []).filter((f: any) => f.type !== 'image')}
+
+			<div class="mb-2 w-full flex flex-col items-end gap-2">
+				{#if images.length > 0}
+					<div class="flex flex-wrap justify-end gap-2 max-w-full">
+						{#each images as upload}
+							<button
+								type="button"
+								class="relative w-30 h-30 rounded-2xl overflow-hidden border border-gray-200 dark:border-white/10 hover:opacity-90 active:scale-95 transition-all duration-150 cursor-pointer shadow-sm group/thumb shrink-0 bg-gray-100 dark:bg-neutral-800"
+								onclick={() => (activeModalImage = upload.url)}
 							>
-								<div class="shrink-0">
-									<Icon name="page-text" size={14} class="text-gray-500 dark:text-gray-400" />
+								<img
+									src={upload.url}
+									alt={upload.name || 'image'}
+									class="w-full h-full object-cover"
+								/>
+								<div
+									class="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/10 dark:group-hover/thumb:bg-black/20 transition-colors duration-150 flex items-center justify-center"
+								>
+									<Icon
+										name="search"
+										size={16}
+										class="text-white opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-150 drop-shadow-md"
+									/>
 								</div>
-								<div class="flex flex-col justify-center w-full overflow-hidden">
-									<div
-										class="dark:text-gray-100 text-xs flex justify-between items-center w-full gap-2"
-									>
-										<div class="font-medium truncate flex-1">{upload.name || 'File'}</div>
-										<div class="text-[10px] text-gray-500 capitalize shrink-0">
-											{upload.type === 'file' ? 'File' : upload.type || 'File'}
+							</button>
+						{/each}
+					</div>
+				{/if}
+
+				{#if otherFiles.length > 0}
+					<div class="flex flex-col gap-1 items-end w-full">
+						{#each otherFiles as upload}
+							<div class="self-end">
+								<div
+									class="relative group py-1.5 px-2 w-48 flex items-center gap-1.5 bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/5 rounded-xl text-left flex-shrink-0 shadow-sm"
+								>
+									<div class="shrink-0">
+										<Icon name="page-text" size={14} class="text-gray-500 dark:text-gray-400" />
+									</div>
+									<div class="flex flex-col justify-center w-full overflow-hidden">
+										<div
+											class="dark:text-gray-100 text-xs flex justify-between items-center w-full gap-2"
+										>
+											<div class="font-medium truncate flex-1">{upload.name || 'File'}</div>
+											<div class="text-[10px] text-gray-500 capitalize shrink-0">
+												{upload.type === 'file' ? 'File' : upload.type || 'File'}
+											</div>
 										</div>
 									</div>
 								</div>
 							</div>
-						{/if}
+						{/each}
 					</div>
-				{/each}
+				{/if}
 			</div>
 		{/if}
 		<div class="flex justify-end">
@@ -336,3 +369,44 @@
 		{/if}
 	{/if}
 </div>
+
+{#if activeModalImage}
+	<!-- Image modal overlay -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 bg-black/85 backdrop-blur-sm z-[150] flex items-center justify-center cursor-zoom-out"
+		onclick={() => (activeModalImage = null)}
+		transition:fade={{ duration: 150 }}
+	>
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="relative max-w-[92vw] max-h-[92vh] flex items-center justify-center p-2 cursor-default"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<img
+				src={activeModalImage}
+				alt="Zoomed preview"
+				class="max-w-full max-h-[88vh] object-contain rounded-2xl shadow-2xl select-none border border-white/10"
+				transition:scale={{ duration: 150, start: 0.95 }}
+			/>
+			<button
+				type="button"
+				class="absolute top-4 right-4 md:-top-2 md:-right-10 w-9 h-9 rounded-full bg-black/45 hover:bg-black/65 text-white flex items-center justify-center transition-all duration-150 shadow-md border border-white/5 hover:scale-105 active:scale-95 cursor-pointer backdrop-blur-sm"
+				onclick={() => (activeModalImage = null)}
+				aria-label="Close"
+			>
+				<Icon name="xmark" size={16} />
+			</button>
+		</div>
+	</div>
+{/if}
+
+<svelte:window
+	onkeydown={(e) => {
+		if (e.key === 'Escape' && activeModalImage) {
+			activeModalImage = null;
+		}
+	}}
+/>
