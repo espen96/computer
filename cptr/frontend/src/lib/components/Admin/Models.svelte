@@ -22,6 +22,7 @@
 		id: string;
 		originalId?: string;
 		name: string;
+		provider: string;
 		base_model: string;
 		is_active: boolean;
 		rows: ParamRow[];
@@ -33,10 +34,14 @@
 	let loading = $state(true);
 	let saving = $state(false);
 	let refreshing = $state(false);
-	let models = $state<ModelEntry[]>([]);
+	let customModels = $state<ModelEntry[]>([]);
+	let baseModels = $state<ModelEntry[]>([]);
 	let rawModels = $state<{ id: string; name: string; provider: string; connection_id: string }[]>([]);
 	let selectedModel = $state<ModelEntry | null>(null);
 	let modelsToDelete = $state<string[]>([]);
+
+	let customModelsExpanded = $state(true);
+	let baseModelsExpanded = $state(false);
 
 	let globalRows = $state<ParamRow[]>([]);
 	let globalSystemPrompt = $state('');
@@ -83,7 +88,13 @@ OS: {{OS}}
 Files:
 {{FILE_TREE}}`;
 
-	let hasDirty = $derived(globalDirty || compactDirty || models.some((m) => m.dirty) || modelsToDelete.length > 0);
+	let hasDirty = $derived(
+		globalDirty ||
+		compactDirty ||
+		customModels.some((m) => m.dirty) ||
+		baseModels.some((m) => m.dirty) ||
+		modelsToDelete.length > 0
+	);
 
 	function parseRows(config: ModelConfigEntry | undefined): ParamRow[] {
 		const rp = config?.params?.request_params;
@@ -113,27 +124,49 @@ Files:
 	) {
 		const config = data.config || {};
 		rawModels = data.models || [];
-		const previousById = new Map(models.map((model) => [model.id, model]));
 
-		if (!preserveDirty || !globalDirty) {
-			globalRows = parseRows(config['*']);
-			globalSystemPrompt = config['*']?.params?.system_prompt || '';
-			globalExpanded = globalRows.length > 0 || !!globalSystemPrompt;
-		}
+		// 1. Process Base Models (raw models from connections)
+		const previousBaseById = new Map(baseModels.map((model) => [model.id, model]));
+		baseModels = rawModels.map((rm) => {
+			const previous = previousBaseById.get(rm.id);
+			if (preserveDirty && previous?.dirty) {
+				return previous;
+			}
+			const mc = config[rm.id];
+			return {
+				id: rm.id,
+				name: rm.name || rm.id,
+				provider: rm.provider,
+				base_model: '',
+				is_active: mc?.is_active !== false,
+				rows: parseRows(mc),
+				systemPrompt: mc?.params?.system_prompt || '',
+				dirty: false,
+				isNew: false
+			};
+		});
 
-		const loadedModels: ModelEntry[] = [];
+		// 2. Process Custom Models (keys in config that are not raw model IDs and not '*')
+		const previousCustomById = new Map(customModels.map((model) => [model.id, model]));
+		const loadedCustomModels: ModelEntry[] = [];
+		const rawModelIds = new Set(rawModels.map((rm) => rm.id));
+
 		for (const [key, val] of Object.entries(config)) {
-			if (key === '*') continue;
+			if (key === '*' || rawModelIds.has(key)) continue;
 			const mc = val as any;
-			const previous = previousById.get(key);
+			const isCustom = mc && typeof mc === 'object' && ('base_model' in mc || 'name' in mc);
+			if (!isCustom) continue;
+
+			const previous = previousCustomById.get(key);
 
 			if (preserveDirty && previous?.dirty) {
-				loadedModels.push(previous);
+				loadedCustomModels.push(previous);
 			} else {
-				loadedModels.push({
+				loadedCustomModels.push({
 					id: key,
 					originalId: key,
 					name: mc.name || key,
+					provider: '',
 					base_model: mc.base_model || '',
 					is_active: mc.is_active !== false,
 					rows: parseRows(mc),
@@ -144,19 +177,25 @@ Files:
 			}
 		}
 
-		// Keep any unsaved new models that were added
+		// Keep any unsaved new custom models
 		if (preserveDirty) {
-			for (const m of models) {
-				if (m.isNew && !loadedModels.some((lm) => lm.id === m.id)) {
-					loadedModels.push(m);
+			for (const m of customModels) {
+				if (m.isNew && !loadedCustomModels.some((lm) => lm.id === m.id)) {
+					loadedCustomModels.push(m);
 				}
 			}
 		}
 
-		models = loadedModels;
+		customModels = loadedCustomModels;
 
-		if (selectedModel && !models.some((model) => model === selectedModel)) {
-			selectedModel = null;
+		// Clean up selectedModel if it was deleted
+		if (selectedModel) {
+			const exists =
+				customModels.some((m) => m === selectedModel) ||
+				baseModels.some((m) => m === selectedModel);
+			if (!exists) {
+				selectedModel = null;
+			}
 		}
 	}
 
@@ -199,18 +238,20 @@ Files:
 		e.stopPropagation();
 		model.is_active = !model.is_active;
 		model.dirty = true;
-		models = [...models];
+		customModels = [...customModels];
+		baseModels = [...baseModels];
 	}
 
 	function addCustomModel() {
 		let count = 1;
-		while (models.some((m) => m.id === `custom-model-${count}`)) {
+		while (customModels.some((m) => m.id === `custom-model-${count}`)) {
 			count++;
 		}
 		const tempId = `custom-model-${count}`;
 		const newModel: ModelEntry = {
 			id: tempId,
 			name: `Custom Model ${count}`,
+			provider: '',
 			base_model: rawModels[0]?.id || '',
 			is_active: true,
 			rows: [],
@@ -218,21 +259,22 @@ Files:
 			dirty: true,
 			isNew: true
 		};
-		models = [...models, newModel];
+		customModels = [...customModels, newModel];
 		selectedModel = newModel;
+		customModelsExpanded = true;
 	}
 
 	function deleteModel(e: Event, model: ModelEntry) {
 		e.stopPropagation();
 		if (model.isNew) {
-			models = models.filter((m) => m.id !== model.id);
+			customModels = customModels.filter((m) => m.id !== model.id);
 			if (selectedModel === model) {
 				selectedModel = null;
 			}
 		} else {
 			if (confirm(`Are you sure you want to delete custom model "${model.name}"?`)) {
 				modelsToDelete.push(model.id);
-				models = models.filter((m) => m.id !== model.id);
+				customModels = customModels.filter((m) => m.id !== model.id);
 				if (selectedModel === model) {
 					selectedModel = null;
 				}
@@ -268,7 +310,7 @@ Files:
 			}
 
 			// 3. Process custom models
-			for (const model of models) {
+			for (const model of customModels) {
 				const sanitizedId = model.id.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 				if (!sanitizedId) {
 					toast.error("Model ID cannot be empty");
@@ -292,15 +334,29 @@ Files:
 				}
 			}
 
+			// 4. Process base models
+			for (const model of baseModels) {
+				if (model.dirty) {
+					const updatePayload = {
+						is_active: model.is_active,
+						params: buildParams(model.rows, model.systemPrompt)
+					};
+					promises.push(updateModelConfig(model.id, updatePayload));
+				}
+			}
+
 			await Promise.all(promises);
 
 			modelsToDelete = [];
 			globalDirty = false;
 			compactDirty = false;
-			for (const m of models) {
+			for (const m of customModels) {
 				m.dirty = false;
 				m.isNew = false;
 				m.originalId = m.id;
+			}
+			for (const m of baseModels) {
+				m.dirty = false;
 			}
 
 			// Save default model and compact threshold
@@ -502,6 +558,34 @@ Files:
 	</div>
 {/snippet}
 
+{#snippet baseModelForm(model: ModelEntry)}
+	<div class="mt-2 mb-4 p-3 bg-gray-50/50 dark:bg-white/2 border border-gray-100 dark:border-white/5 rounded-xl space-y-3">
+		<!-- System prompt override -->
+		{@render systemPromptField(
+			model.systemPrompt,
+			(v) => {
+				model.systemPrompt = v;
+				model.dirty = true;
+			},
+			$t('models.systemPromptInherited')
+		)}
+
+		<!-- Request parameters -->
+		{@render paramRows(
+			model.rows,
+			() => (model.dirty = true),
+			(i) => {
+				model.rows = model.rows.filter((_, idx) => idx !== i);
+				model.dirty = true;
+			},
+			() => {
+				model.rows = [...model.rows, { key: '', value: '' }];
+				model.dirty = true;
+			}
+		)}
+	</div>
+{/snippet}
+
 <div class="flex flex-col h-full">
 	{#if loading}
 		<div class="flex justify-center py-8"><Spinner size={16} /></div>
@@ -610,9 +694,19 @@ Files:
 
 			<!-- Custom models header -->
 			<div class="flex items-center justify-between mt-6 mb-2 border-t border-gray-100 dark:border-white/5 pt-4">
-				<h3 class="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">
-					Custom Models
-				</h3>
+				<button
+					class="flex items-center gap-2 text-left"
+					onclick={() => (customModelsExpanded = !customModelsExpanded)}
+				>
+					<h3 class="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">
+						Custom Models
+					</h3>
+					<Icon
+						name={customModelsExpanded ? 'chevron-down' : 'chevron-right'}
+						size={10}
+						class="shrink-0 text-gray-300 dark:text-gray-700"
+					/>
+				</button>
 				<button
 					class="flex items-center gap-1.5 h-6 px-2 text-[11px] font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors duration-100"
 					onclick={addCustomModel}
@@ -622,50 +716,121 @@ Files:
 				</button>
 			</div>
 
-			<!-- Per-model list -->
-			{#each models as model}
-				<button
-					class="group flex items-center gap-2 w-full h-8 text-left border-b border-gray-50/50 dark:border-white/2 hover:bg-gray-50/30 dark:hover:bg-white/1 px-1 rounded-lg"
-					onclick={() => (selectedModel = selectedModel === model ? null : model)}
-				>
-					<span
-						class="flex-1 text-[13px] font-medium truncate {model.is_active
-							? 'text-gray-700 dark:text-gray-300'
-							: 'text-gray-400 dark:text-gray-600'}"
-					>
-						{model.name} <span class="text-[10px] text-gray-400 font-normal ml-2">({model.id})</span>
-					</span>
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<span
-						class="relative w-6 h-3.5 rounded-full shrink-0 cursor-pointer transition-colors duration-150
-							{model.is_active ? 'bg-gray-900 dark:bg-white' : 'bg-gray-200 dark:bg-gray-700'}"
-						role="switch"
-						tabindex="-1"
-						aria-checked={model.is_active}
-						onclick={(e) => toggleModel(e, model)}
-						onkeydown={(e) => {
-							if (e.key === 'Enter' || e.key === ' ') {
-								e.preventDefault();
-								toggleModel(e, model);
-							}
-						}}
+			<!-- Custom models list -->
+			{#if customModelsExpanded}
+				{#each customModels as model}
+					<button
+						class="group flex items-center gap-2 w-full h-8 text-left border-b border-gray-50/50 dark:border-white/2 hover:bg-gray-50/30 dark:hover:bg-white/1 px-1 rounded-lg"
+						onclick={() => (selectedModel = selectedModel === model ? null : model)}
 					>
 						<span
-							class="absolute top-0.5 w-2.5 h-2.5 rounded-full transition-all duration-150
-							{model.is_active ? 'left-3 bg-white dark:bg-gray-900' : 'left-0.5 bg-white dark:bg-gray-500'}"
-						></span>
-					</span>
-				</button>
+							class="flex-1 text-[13px] font-medium truncate {model.is_active
+								? 'text-gray-700 dark:text-gray-300'
+								: 'text-gray-400 dark:text-gray-600'}"
+						>
+							{model.name} <span class="text-[10px] text-gray-400 font-normal ml-2">({model.id})</span>
+						</span>
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<span
+							class="relative w-6 h-3.5 rounded-full shrink-0 cursor-pointer transition-colors duration-150
+								{model.is_active ? 'bg-gray-900 dark:bg-white' : 'bg-gray-200 dark:bg-gray-700'}"
+							role="switch"
+							tabindex="-1"
+							aria-checked={model.is_active}
+							onclick={(e) => toggleModel(e, model)}
+							onkeydown={(e) => {
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault();
+									toggleModel(e, model);
+								}
+							}}
+						>
+							<span
+								class="absolute top-0.5 w-2.5 h-2.5 rounded-full transition-all duration-150
+								{model.is_active
+									? 'left-3 bg-white dark:bg-gray-900'
+									: 'left-0.5 bg-white dark:bg-gray-500'}"
+							></span>
+						</span>
+					</button>
 
-				{#if selectedModel === model}
-					{@render modelForm(model)}
+					{#if selectedModel === model}
+						{@render modelForm(model)}
+					{/if}
+				{/each}
+
+				{#if customModels.length === 0}
+					<p class="text-[13px] text-gray-400 dark:text-gray-600 py-4">
+						No custom models defined. Click '+ Add Custom Model' to create one.
+					</p>
 				{/if}
-			{/each}
+			{/if}
 
-			{#if models.length === 0}
-				<p class="text-[13px] text-gray-400 dark:text-gray-600 py-4">
-					No custom models defined. Click '+ Add Custom Model' to create one.
-				</p>
+			<!-- Base models header -->
+			<div class="flex items-center mt-6 mb-2 border-t border-gray-100 dark:border-white/5 pt-4">
+				<button
+					class="flex items-center gap-2 text-left"
+					onclick={() => (baseModelsExpanded = !baseModelsExpanded)}
+				>
+					<h3 class="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">
+						Base Models (Connections)
+					</h3>
+					<Icon
+						name={baseModelsExpanded ? 'chevron-down' : 'chevron-right'}
+						size={10}
+						class="shrink-0 text-gray-300 dark:text-gray-700"
+					/>
+				</button>
+			</div>
+
+			<!-- Base models list -->
+			{#if baseModelsExpanded}
+				{#each baseModels as model}
+					<button
+						class="group flex items-center gap-2 w-full h-8 text-left border-b border-gray-50/50 dark:border-white/2 hover:bg-gray-50/30 dark:hover:bg-white/1 px-1 rounded-lg"
+						onclick={() => (selectedModel = selectedModel === model ? null : model)}
+					>
+						<span
+							class="flex-1 text-[13px] font-medium truncate {model.is_active
+								? 'text-gray-700 dark:text-gray-300'
+								: 'text-gray-400 dark:text-gray-600'}"
+						>
+							{model.name} <span class="text-[10px] text-gray-400 font-normal ml-2">({model.provider})</span>
+						</span>
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<span
+							class="relative w-6 h-3.5 rounded-full shrink-0 cursor-pointer transition-colors duration-150
+								{model.is_active ? 'bg-gray-900 dark:bg-white' : 'bg-gray-200 dark:bg-gray-700'}"
+							role="switch"
+							tabindex="-1"
+							aria-checked={model.is_active}
+							onclick={(e) => toggleModel(e, model)}
+							onkeydown={(e) => {
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault();
+									toggleModel(e, model);
+								}
+							}}
+						>
+							<span
+								class="absolute top-0.5 w-2.5 h-2.5 rounded-full transition-all duration-150
+								{model.is_active
+									? 'left-3 bg-white dark:bg-gray-900'
+									: 'left-0.5 bg-white dark:bg-gray-500'}"
+							></span>
+						</span>
+					</button>
+
+					{#if selectedModel === model}
+						{@render baseModelForm(model)}
+					{/if}
+				{/each}
+
+				{#if baseModels.length === 0}
+					<p class="text-[13px] text-gray-400 dark:text-gray-600 py-4">
+						No base models available. Add a connection first.
+					</p>
+				{/if}
 			{/if}
 		</div>
 

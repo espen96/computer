@@ -163,17 +163,20 @@ async def get_models(request: Request):
             continue
 
         base_model = entry.get("base_model")
+        if not base_model:
+            # Skip raw model config overrides (which don't have a base_model)
+            continue
+
         name = entry.get("name") or model_id
         provider = ""
         connection_id = ""
 
-        if base_model:
-            try:
-                connection, _ = await _resolve_connection(base_model, request.app.state)
-                provider = connection.get("provider", "")
-                connection_id = connection.get("id", "")
-            except Exception:
-                pass
+        try:
+            connection, _ = await _resolve_connection(base_model, request.app.state)
+            provider = connection.get("provider", "")
+            connection_id = connection.get("id", "")
+        except Exception:
+            pass
 
         models.append(
             {
