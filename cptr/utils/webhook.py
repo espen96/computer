@@ -69,4 +69,3 @@ async def post_webhook(url: str, title: str, message: str) -> bool:
     except Exception:
         logger.exception("[webhook] Failed to send notification to %s", url[:50])
         return False
-""", "Description": "Adapted from open-webui's webhook.py — uses httpx, supports Slack/Discord/Teams/generic JSON", "IsArtifact": false, "Overwrite": false, "TargetFile": "/Users/tim/Documents/workspace/computer/cptr/utils/webhook.py

@@ -16,6 +16,7 @@
 	import Icon from '../Icon.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import ModelSelector from '$lib/components/common/ModelSelector.svelte';
+	import ToggleSwitch from '../common/ToggleSwitch.svelte';
 
 	type ParamRow = { key: string; value: string };
 	type ModelEntry = {
@@ -58,6 +59,12 @@
 	let compactTokenThreshold = $state(80000);
 	let compactDirty = $state(false);
 
+	// Chat titles
+	let autoTitle = $state(true);
+	let titleModelType = $state('same'); // 'same' | 'specific'
+	let titleModelId = $state('');
+	let titlesDirty = $state(false);
+
 	const TEMPLATE_VARIABLES = [
 		{ name: 'WORKSPACE_NAME', desc: 'Workspace folder name' },
 		{ name: 'WORKSPACE_PATH', desc: 'Full workspace path' },
@@ -81,6 +88,7 @@ Files:
 	let hasDirty = $derived(
 		globalDirty ||
 			compactDirty ||
+			titlesDirty ||
 			customModels.some((m) => m.dirty) ||
 			baseModels.some((m) => m.dirty) ||
 			modelsToDelete.length > 0
@@ -208,6 +216,18 @@ Files:
 			compactTokenThreshold = Number(adminCfg['chat.compact_token_threshold']) || 80000;
 			defaultModelId =
 				typeof adminCfg['chat.default_model'] === 'string' ? adminCfg['chat.default_model'] : '';
+
+			const autoTitleVal = adminCfg['chat.auto_title'];
+			autoTitle = autoTitleVal !== false; // defaults to true
+
+			const titleModelVal = adminCfg['chat.title_model'];
+			if (typeof titleModelVal === 'string' && titleModelVal !== 'same' && titleModelVal !== '') {
+				titleModelType = 'specific';
+				titleModelId = titleModelVal;
+			} else {
+				titleModelType = 'same';
+				titleModelId = '';
+			}
 		} catch {}
 	});
 
@@ -355,8 +375,12 @@ Files:
 			// Save default model and compact threshold
 			await updateConfig({
 				'chat.compact_token_threshold': compactTokenThreshold,
-				'chat.default_model': defaultModelId
+				'chat.default_model': defaultModelId,
+				'chat.auto_title': autoTitle,
+				'chat.title_model': titleModelType === 'same' ? 'same' : titleModelId
 			});
+
+			titlesDirty = false;
 
 			await refreshChatState();
 			toast.success($t('settings.saved'));
@@ -652,6 +676,72 @@ Files:
 						{$t('admin.compactTokenThresholdHint')}
 					</p>
 				</div>
+			</div>
+
+			<!-- Chat titles -->
+			<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2">{$t('admin.chatTitles')}</h3>
+
+			<div class="flex flex-col gap-2.5 mb-5">
+				<div>
+					<label class="flex items-center justify-between cursor-pointer">
+						<span class="text-xs text-gray-600 dark:text-gray-400"
+							>{$t('admin.autoGenerateTitles')}</span
+						>
+						<ToggleSwitch
+							value={autoTitle}
+							onchange={(v) => {
+								autoTitle = v;
+								titlesDirty = true;
+							}}
+						/>
+					</label>
+					<p class="text-[11px] text-gray-400 dark:text-gray-600 mt-0.5">
+						{$t('admin.autoGenerateTitlesHint')}
+					</p>
+				</div>
+
+				{#if autoTitle}
+					<div class="mt-1 pl-4 border-l-2 border-gray-100 dark:border-white/5 space-y-3">
+						<div>
+							<span class="text-xs text-gray-600 dark:text-gray-400 block mb-1.5"
+								>{$t('admin.titleModelType')}</span
+							>
+							<div class="flex gap-2">
+								{#each [{ value: 'same', label: $t('admin.titleModelSame') }, { value: 'specific', label: $t('admin.titleModelSpecific') }] as opt}
+									<button
+										class="flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs transition-colors duration-100
+										{titleModelType === opt.value
+											? 'bg-gray-200/50 dark:bg-white/8 text-gray-900 dark:text-white font-medium'
+											: 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+										onclick={() => {
+											titleModelType = opt.value;
+											titlesDirty = true;
+											if (titleModelType === 'specific' && !titleModelId) {
+												titleModelId = defaultModelId || (rawModels[0]?.id ?? '');
+											}
+										}}
+									>
+										{opt.label}
+									</button>
+								{/each}
+							</div>
+						</div>
+
+						{#if titleModelType === 'specific'}
+							<div class="mt-2">
+								<label
+									class="text-xs text-gray-600 dark:text-gray-400 block mb-1"
+									for="title-model-selector">{$t('admin.titleModel')}</label
+								>
+								<ModelSelector
+									bind:selectedModel={titleModelId}
+									preferAbove={false}
+									align="start"
+								/>
+							</div>
+						{/if}
+					</div>
+				{/if}
 			</div>
 
 			<!-- Global defaults -->

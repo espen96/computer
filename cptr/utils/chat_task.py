@@ -1766,9 +1766,25 @@ async def run_chat_task(
                     # Only generate if the title still matches that fallback.
                     fallback = first_user.content[:50].strip() or "New Chat"
                     if chat_obj.title == fallback:
-                        await generate_chat_title(
-                            chat_id, user_id, connection, model, first_user.content
-                        )
+                        auto_title = await Config.get("chat.auto_title")
+                        if auto_title is not False:
+                            title_model = await Config.get("chat.title_model") or "same"
+                            title_conn, title_bare_model = connection, model
+                            if title_model != "same":
+                                try:
+                                    from cptr.routers.chat import _resolve_connection
+
+                                    title_conn, title_bare_model = await _resolve_connection(
+                                        title_model
+                                    )
+                                except Exception:
+                                    logger.warning(
+                                        "[title] Failed to resolve connection for title model %s, falling back to chat model",
+                                        title_model,
+                                    )
+                            await generate_chat_title(
+                                chat_id, user_id, title_conn, title_bare_model, first_user.content
+                            )
         except Exception:
             logger.debug(
                 "[title] Error in title generation for chat %s", chat_id[:8], exc_info=True
