@@ -418,6 +418,8 @@ async def refresh_model_list(request: Request):
 class UpdateModelConfigRequest(BaseModel):
     is_active: Optional[bool] = None
     params: Optional[dict] = None
+    name: Optional[str] = None
+    base_model: Optional[str] = None
 
 
 @router.put("/models/{model_id:path}/config")
@@ -436,9 +438,15 @@ async def update_model_config(
     if body.params is not None:
         entry["params"] = body.params
 
+    if body.name is not None:
+        entry["name"] = body.name
+
+    if body.base_model is not None:
+        entry["base_model"] = body.base_model
+
     # Clean up empty entries
     if not entry or (entry.keys() <= {"is_active"} and entry.get("is_active") is not False):
-        if not entry.get("params"):
+        if not entry.get("params") and not entry.get("name") and not entry.get("base_model"):
             all_config.pop(model_id, None)
         else:
             all_config[model_id] = entry
@@ -447,6 +455,18 @@ async def update_model_config(
 
     await Config.upsert({CONFIG_KEY_CHAT_MODELS: all_config})
     return {"ok": True}
+
+
+@router.delete("/models/{model_id:path}")
+async def delete_model_config(model_id: str, request: Request):
+    """Delete a custom model configuration."""
+    require_admin(request)
+    all_config = await Config.get(CONFIG_KEY_CHAT_MODELS) or {}
+    if model_id in all_config:
+        all_config.pop(model_id)
+        await Config.upsert({CONFIG_KEY_CHAT_MODELS: all_config})
+    return {"ok": True}
+
 
 
 # ── Tool servers ─────────────────────────────────────────────

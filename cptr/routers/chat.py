@@ -148,40 +148,45 @@ def invalidate_model_cache(app_state):
 
 @router.get("/models")
 async def get_models(request: Request):
-    """Aggregate available models across all connections.
-
-    If a connection has data.models set, use those.
-    Otherwise, call the provider's /models endpoint to discover available models.
+    """Aggregate available models from custom models configuration.
+    We no longer display raw models from connections directly;
+    they all must be specified as custom models in chat.models config.
     """
     _get_user(request)
-    connections = [c for c in await _get_connections() if c.get("enabled", True)]
+    chat_models_config = await Config.get("chat.models") or {}
     models = []
 
-    for conn in connections:
-        model_ids = await _get_connection_models(conn, request.app.state)
+    for model_id, entry in chat_models_config.items():
+        if model_id == "*":
+            continue
+        if entry.get("is_active") is False:
+            continue
 
-        prefix = (conn.get("prefix_id") or "").strip()
+        base_model = entry.get("base_model")
+        name = entry.get("name") or model_id
+        provider = ""
+        connection_id = ""
 
-        for model_id in model_ids or []:
-            prefixed_id = f"{prefix}/{model_id}" if prefix else model_id
-            models.append(
-                {
-                    "id": prefixed_id,
-                    "name": model_id,
-                    "provider": conn.get("provider", ""),
-                    "connection_id": conn["id"],
-                }
-            )
+        if base_model:
+            try:
+                connection, _ = await _resolve_connection(base_model, request.app.state)
+                provider = connection.get("provider", "")
+                connection_id = connection.get("id", "")
+            except Exception:
+                pass
+
+        models.append(
+            {
+                "id": model_id,
+                "name": name,
+                "provider": provider,
+                "connection_id": connection_id,
+            }
+        )
 
     default_model = await Config.get("chat.default_model")
-
-    # Filter out inactive models
-    chat_models_config = await Config.get("chat.models") or {}
-    inactive = {k for k, v in chat_models_config.items() if v.get("is_active") is False}
-    if inactive:
-        models = [m for m in models if m["id"] not in inactive]
-
     return {"models": models, "default": default_model}
+
 
 
 async def _fetch_provider_models(conn: dict) -> list[str]:
@@ -970,6 +975,14 @@ async def _resolve_connection(model_id: str, app_state=None) -> tuple[dict, str]
     connections = [c for c in await _get_connections() if c.get("enabled", True)]
     if not connections:
         raise HTTPException(400, "no connections configured")
+
+    # Resolve custom model to its base model if defined
+    chat_models_config = await Config.get("chat.models") or {}
+    if model_id in chat_models_config and model_id != "*":
+        custom_model = chat_models_config[model_id]
+        if "base_model" in custom_model and custom_model["base_model"]:
+            model_id = custom_model["base_model"]
+
 
     # Try prefix match first
     if "/" in model_id:

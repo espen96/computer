@@ -1199,7 +1199,14 @@ async def run_chat_task(
 
         chat_obj = await Chat.get_by_id(chat_id)
         chat_params = (chat_obj.meta or {}).get("params", {}) if chat_obj else {}
-        system = await _load_system_prompt(workspace, model)
+
+        # Get custom model ID from message
+        custom_model_id = model
+        msg_obj = await ChatMessage.get_by_id(message_id)
+        if msg_obj and msg_obj.model:
+            custom_model_id = msg_obj.model
+
+        system = await _load_system_prompt(workspace, custom_model_id)
         messages, loaded_summary = await _load_message_history(chat_id, message_id)
         if loaded_summary:
             system += f"\n\n[CONVERSATION SUMMARY]\n{loaded_summary}"
@@ -1274,7 +1281,7 @@ async def run_chat_task(
         try:
             chat_models_config = await Config.get("chat.models") or {}
             global_rp = chat_models_config.get("*", {}).get("params", {}).get("request_params", {})
-            model_rp = chat_models_config.get(model, {}).get("params", {}).get("request_params", {})
+            model_rp = chat_models_config.get(custom_model_id, {}).get("params", {}).get("request_params", {})
         except Exception:
             pass
         request_params = {**global_rp, **model_rp, **chat_request_params} or None

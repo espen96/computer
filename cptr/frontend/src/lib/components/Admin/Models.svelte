@@ -5,6 +5,7 @@
 		getModelConfig,
 		refreshModelList,
 		updateModelConfig,
+		deleteModelConfig,
 		getAdminConfig,
 		updateConfig,
 		type ModelConfigEntry
@@ -19,19 +20,23 @@
 	type ParamRow = { key: string; value: string };
 	type ModelEntry = {
 		id: string;
+		originalId?: string;
 		name: string;
-		provider: string;
+		base_model: string;
 		is_active: boolean;
 		rows: ParamRow[];
 		systemPrompt: string;
 		dirty: boolean;
+		isNew?: boolean;
 	};
 
 	let loading = $state(true);
 	let saving = $state(false);
 	let refreshing = $state(false);
 	let models = $state<ModelEntry[]>([]);
-	let selectedId = $state<string | null>(null);
+	let rawModels = $state<{ id: string; name: string; provider: string; connection_id: string }[]>([]);
+	let selectedModel = $state<ModelEntry | null>(null);
+	let modelsToDelete = $state<string[]>([]);
 
 	let globalRows = $state<ParamRow[]>([]);
 	let globalSystemPrompt = $state('');
@@ -66,7 +71,7 @@ OS: {{OS}}
 Files:
 {{FILE_TREE}}`;
 
-	let hasDirty = $derived(globalDirty || compactDirty || models.some((m) => m.dirty));
+	let hasDirty = $derived(globalDirty || compactDirty || models.some((m) => m.dirty) || modelsToDelete.length > 0);
 
 	function parseRows(config: ModelConfigEntry | undefined): ParamRow[] {
 		const rp = config?.params?.request_params;
@@ -95,6 +100,7 @@ Files:
 		preserveDirty = false
 	) {
 		const config = data.config || {};
+		rawModels = data.models || [];
 		const previousById = new Map(models.map((model) => [model.id, model]));
 
 		if (!preserveDirty || !globalDirty) {
@@ -103,24 +109,42 @@ Files:
 			globalExpanded = globalRows.length > 0 || !!globalSystemPrompt;
 		}
 
-		models = data.models.map((m) => {
-			const previous = previousById.get(m.id);
+		const loadedModels: ModelEntry[] = [];
+		for (const [key, val] of Object.entries(config)) {
+			if (key === '*') continue;
+			const mc = val as any;
+			const previous = previousById.get(key);
+
 			if (preserveDirty && previous?.dirty) {
-				return { ...previous, ...m };
+				loadedModels.push(previous);
+			} else {
+				loadedModels.push({
+					id: key,
+					originalId: key,
+					name: mc.name || key,
+					base_model: mc.base_model || '',
+					is_active: mc.is_active !== false,
+					rows: parseRows(mc),
+					systemPrompt: mc.params?.system_prompt || '',
+					dirty: false,
+					isNew: false
+				});
 			}
+		}
 
-			const mc = config[m.id];
-			return {
-				...m,
-				is_active: mc?.is_active !== false,
-				rows: parseRows(mc),
-				systemPrompt: (mc?.params as any)?.system_prompt || '',
-				dirty: false
-			};
-		});
+		// Keep any unsaved new models that were added
+		if (preserveDirty) {
+			for (const m of models) {
+				if (m.isNew && !loadedModels.some((lm) => lm.id === m.id)) {
+					loadedModels.push(m);
+				}
+			}
+		}
 
-		if (selectedId && !models.some((model) => model.id === selectedId)) {
-			selectedId = null;
+		models = loadedModels;
+
+		if (selectedModel && !models.some((model) => model === selectedModel)) {
+			selectedModel = null;
 		}
 	}
 
@@ -159,17 +183,48 @@ Files:
 		}
 	}
 
-	async function toggleModel(e: Event, model: ModelEntry) {
+	function toggleModel(e: Event, model: ModelEntry) {
 		e.stopPropagation();
-		const newVal = !model.is_active;
-		model.is_active = newVal;
+		model.is_active = !model.is_active;
+		model.dirty = true;
 		models = [...models];
-		try {
-			await updateModelConfig(model.id, { is_active: newVal });
-		} catch {
-			model.is_active = !newVal;
-			models = [...models];
-			toast.error($t('models.failedToToggle'));
+	}
+
+	function addCustomModel() {
+		let count = 1;
+		while (models.some((m) => m.id === `custom-model-${count}`)) {
+			count++;
+		}
+		const tempId = `custom-model-${count}`;
+		const newModel: ModelEntry = {
+			id: tempId,
+			name: `Custom Model ${count}`,
+			base_model: rawModels[0]?.id || '',
+			is_active: true,
+			rows: [],
+			systemPrompt: '',
+			dirty: true,
+			isNew: true
+		};
+		models = [...models, newModel];
+		selectedModel = newModel;
+	}
+
+	function deleteModel(e: Event, model: ModelEntry) {
+		e.stopPropagation();
+		if (model.isNew) {
+			models = models.filter((m) => m.id !== model.id);
+			if (selectedModel === model) {
+				selectedModel = null;
+			}
+		} else {
+			if (confirm(`Are you sure you want to delete custom model "${model.name}"?`)) {
+				modelsToDelete.push(model.id);
+				models = models.filter((m) => m.id !== model.id);
+				if (selectedModel === model) {
+					selectedModel = null;
+				}
+			}
 		}
 	}
 
@@ -185,6 +240,13 @@ Files:
 		saving = true;
 		try {
 			const promises: Promise<unknown>[] = [];
+
+			// 1. Process deletions
+			for (const id of modelsToDelete) {
+				promises.push(deleteModelConfig(id));
+			}
+
+			// 2. Process global default config
 			if (globalDirty) {
 				promises.push(
 					updateModelConfig('*', {
@@ -192,26 +254,50 @@ Files:
 					})
 				);
 			}
+
+			// 3. Process custom models
 			for (const model of models) {
-				if (model.dirty) {
-					promises.push(
-						updateModelConfig(model.id, {
-							params: buildParams(model.rows, model.systemPrompt)
-						})
-					);
+				const sanitizedId = model.id.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+				if (!sanitizedId) {
+					toast.error("Model ID cannot be empty");
+					saving = false;
+					return;
+				}
+
+				if (model.dirty || model.isNew || (model.originalId && model.originalId !== model.id)) {
+					const updatePayload = {
+						is_active: model.is_active,
+						name: model.name,
+						base_model: model.base_model,
+						params: buildParams(model.rows, model.systemPrompt)
+					};
+
+					if (model.originalId && model.originalId !== model.id) {
+						promises.push(deleteModelConfig(model.originalId));
+					}
+
+					promises.push(updateModelConfig(sanitizedId, updatePayload));
 				}
 			}
-			await Promise.all(promises);
-			globalDirty = false;
-			models.forEach((m) => (m.dirty = false));
 
-			// Save default model
+			await Promise.all(promises);
+
+			modelsToDelete = [];
+			globalDirty = false;
+			compactDirty = false;
+			for (const m of models) {
+				m.dirty = false;
+				m.isNew = false;
+				m.originalId = m.id;
+			}
+
+			// Save default model and compact threshold
 			await updateConfig({
 				'chat.compact_token_threshold': compactTokenThreshold,
 				'chat.default_model': defaultModelId
 			});
-			compactDirty = false;
 
+			await refreshChatState();
 			toast.success($t('settings.saved'));
 		} catch {
 			toast.error($t('models.failedToSave'));
@@ -315,6 +401,92 @@ Files:
 	</div>
 {/snippet}
 
+{#snippet modelForm(model: ModelEntry)}
+	<div class="mt-2 mb-4 p-3 bg-gray-50/50 dark:bg-white/2 border border-gray-100 dark:border-white/5 rounded-xl space-y-3">
+		<!-- Name and ID row -->
+		<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+			<div>
+				<label class="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide font-medium" for="model-name-{model.id}">Model Name</label>
+				<input
+					id="model-name-{model.id}"
+					type="text"
+					bind:value={model.name}
+					oninput={() => model.dirty = true}
+					placeholder="e.g. Gemma 4 | 12B"
+					class="w-full h-8 px-2.5 mt-1 rounded-lg text-xs bg-white dark:bg-white/5 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/8 outline-none focus:border-blue-500"
+				/>
+			</div>
+			<div>
+				<label class="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide font-medium" for="model-slug-{model.id}">Model ID / Slug</label>
+				<input
+					id="model-slug-{model.id}"
+					type="text"
+					bind:value={model.id}
+					oninput={() => model.dirty = true}
+					placeholder="e.g. gemma-4-12b"
+					class="w-full h-8 px-2.5 mt-1 rounded-lg text-xs bg-white dark:bg-white/5 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/8 outline-none focus:border-blue-500"
+				/>
+			</div>
+		</div>
+
+		<!-- Base Model selector -->
+		<div>
+			<label class="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide font-medium" for="base-model-{model.id}">Base Model (Inherits From)</label>
+			<div class="relative mt-1">
+				<select
+					id="base-model-{model.id}"
+					bind:value={model.base_model}
+					onchange={() => model.dirty = true}
+					class="w-full h-8 pl-2.5 pr-8 rounded-lg text-xs bg-white dark:bg-white/5 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/8 outline-none focus:border-blue-500 appearance-none cursor-pointer"
+				>
+					<option value="" disabled>Select a base model</option>
+					{#each rawModels as rm}
+						<option value={rm.id}>{rm.name || rm.id} ({rm.provider})</option>
+					{/each}
+				</select>
+				<div class="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-gray-400">
+					<Icon name="chevron-down" size={10} />
+				</div>
+			</div>
+		</div>
+
+		<!-- System prompt override -->
+		{@render systemPromptField(
+			model.systemPrompt,
+			(v) => {
+				model.systemPrompt = v;
+				model.dirty = true;
+			},
+			$t('models.systemPromptInherited')
+		)}
+
+		<!-- Request parameters -->
+		{@render paramRows(
+			model.rows,
+			() => (model.dirty = true),
+			(i) => {
+				model.rows = model.rows.filter((_, idx) => idx !== i);
+				model.dirty = true;
+			},
+			() => {
+				model.rows = [...model.rows, { key: '', value: '' }];
+				model.dirty = true;
+			}
+		)}
+
+		<!-- Action buttons -->
+		<div class="flex justify-end pt-1">
+			<button
+				class="flex items-center gap-1 text-[11px] text-red-500 hover:text-red-600 dark:hover:text-red-400 transition-colors duration-75 font-medium"
+				onclick={(e) => deleteModel(e, model)}
+			>
+				<Icon name="trash" size={10} />
+				<span>Delete Model</span>
+			</button>
+		</div>
+	</div>
+{/snippet}
+
 <div class="flex flex-col h-full">
 	{#if loading}
 		<div class="flex justify-center py-8"><Spinner size={16} /></div>
@@ -409,18 +581,32 @@ Files:
 				)}
 			{/if}
 
+			<!-- Custom models header -->
+			<div class="flex items-center justify-between mt-6 mb-2 border-t border-gray-100 dark:border-white/5 pt-4">
+				<h3 class="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">
+					Custom Models
+				</h3>
+				<button
+					class="flex items-center gap-1.5 h-6 px-2 text-[11px] font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors duration-100"
+					onclick={addCustomModel}
+				>
+					<Icon name="plus" size={10} />
+					<span>Add Custom Model</span>
+				</button>
+			</div>
+
 			<!-- Per-model list -->
 			{#each models as model}
 				<button
-					class="group flex items-center gap-2 w-full h-7 text-left"
-					onclick={() => (selectedId = selectedId === model.id ? null : model.id)}
+					class="group flex items-center gap-2 w-full h-8 text-left border-b border-gray-50/50 dark:border-white/2 hover:bg-gray-50/30 dark:hover:bg-white/1 px-1 rounded-lg"
+					onclick={() => (selectedModel = selectedModel === model ? null : model)}
 				>
 					<span
-						class="flex-1 text-[13px] truncate {model.is_active
+						class="flex-1 text-[13px] font-medium truncate {model.is_active
 							? 'text-gray-700 dark:text-gray-300'
 							: 'text-gray-400 dark:text-gray-600'}"
 					>
-						{model.name}
+						{model.name} <span class="text-[10px] text-gray-400 font-normal ml-2">({model.id})</span>
 					</span>
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<span
@@ -446,33 +632,14 @@ Files:
 					</span>
 				</button>
 
-				{#if selectedId === model.id}
-					{@render systemPromptField(
-						model.systemPrompt,
-						(v) => {
-							model.systemPrompt = v;
-							model.dirty = true;
-						},
-						$t('models.systemPromptInherited')
-					)}
-					{@render paramRows(
-						model.rows,
-						() => (model.dirty = true),
-						(i) => {
-							model.rows = model.rows.filter((_, idx) => idx !== i);
-							model.dirty = true;
-						},
-						() => {
-							model.rows = [...model.rows, { key: '', value: '' }];
-							model.dirty = true;
-						}
-					)}
+				{#if selectedModel === model}
+					{@render modelForm(model)}
 				{/if}
 			{/each}
 
 			{#if models.length === 0}
 				<p class="text-[13px] text-gray-400 dark:text-gray-600 py-4">
-					{$t('models.noModels')}
+					No custom models defined. Click '+ Add Custom Model' to create one.
 				</p>
 			{/if}
 		</div>
