@@ -33,7 +33,11 @@
 
 	const providerConfig = {
 		openai: { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', placeholder: 'sk-...' },
-		anthropic: { name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', placeholder: 'sk-ant-...' }
+		anthropic: {
+			name: 'Anthropic',
+			baseUrl: 'https://api.anthropic.com/v1',
+			placeholder: 'sk-ant-...'
+		}
 	};
 
 	const config = $derived(providerConfig[provider]);
@@ -127,7 +131,7 @@
 				</p>
 
 				{#if selectedPath}
-					<p class="text-[12px] font-mono text-gray-700 dark:text-gray-300 mb-3">
+					<p class="text-xs font-mono text-gray-700 dark:text-gray-300 mb-3">
 						{selectedPath}
 					</p>
 				{/if}
@@ -151,7 +155,12 @@
 		{:else if step === 2}
 			<!-- Connect AI -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="animate-in" onkeydown={(e) => { if (e.key === 'Enter' && apiKey.trim()) connectAi(); }}>
+			<div
+				class="animate-in"
+				onkeydown={(e) => {
+					if (e.key === 'Enter' && apiKey.trim()) connectAi();
+				}}
+			>
 				<h2 class="text-xs text-gray-400 dark:text-gray-600 mb-1">
 					{$t('onboarding.connectAi')}
 				</h2>
@@ -195,7 +204,9 @@
 					{/if}
 
 					<div class="mb-3">
-						<p class="text-[11px] text-gray-400 dark:text-gray-600 mb-0.5">{$t('connections.baseUrl')}</p>
+						<p class="text-[11px] text-gray-400 dark:text-gray-600 mb-0.5">
+							{$t('connections.baseUrl')}
+						</p>
 						<input
 							type="text"
 							placeholder="https://api.openai.com/v1"
@@ -214,7 +225,9 @@
 					</div>
 
 					<div class="mb-2">
-						<p class="text-[11px] text-gray-400 dark:text-gray-600 mb-0.5">{$t('connections.apiKey')}</p>
+						<p class="text-[11px] text-gray-400 dark:text-gray-600 mb-0.5">
+							{$t('connections.apiKey')}
+						</p>
 						<input
 							type="password"
 							placeholder={config.placeholder}
@@ -262,13 +275,13 @@
 				</p>
 
 				<div class="flex flex-col gap-1.5 mb-6">
-					<p class="text-[12px] text-gray-500 dark:text-gray-500">
+					<p class="text-xs text-gray-500 dark:text-gray-500">
 						{$t('onboarding.tipSearch', { shortcut: searchShortcut })}
 					</p>
-					<p class="text-[12px] text-gray-500 dark:text-gray-500">
+					<p class="text-xs text-gray-500 dark:text-gray-500">
 						{$t('onboarding.tipTerminal')}
 					</p>
-					<p class="text-[12px] text-gray-500 dark:text-gray-500">
+					<p class="text-xs text-gray-500 dark:text-gray-500">
 						{$t('onboarding.tipMobile')}
 					</p>
 				</div>

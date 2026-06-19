@@ -13,7 +13,14 @@
 		onedit?: (content: string, submit: boolean) => void;
 		onnavigate?: (direction: -1 | 1) => void;
 	}
-	let { content, meta = null, siblingIndex = 0, siblingTotal = 1, onedit, onnavigate }: Props = $props();
+	let {
+		content,
+		meta = null,
+		siblingIndex = 0,
+		siblingTotal = 1,
+		onedit,
+		onnavigate
+	}: Props = $props();
 
 	type Segment = { type: 'text'; value: string } | { type: 'file'; label: string; path: string };
 
@@ -110,7 +117,7 @@
 					rows="1"
 				></textarea>
 			</div>
-			<div class="flex justify-between mt-2 text-[12px] font-medium">
+			<div class="flex justify-between mt-2 text-xs font-medium">
 				<button
 					class="px-3 py-1 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 bg-gray-100 dark:bg-white/6 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors duration-100"
 					onclick={saveEdit}>{$t('common.save')}</button
@@ -136,14 +143,20 @@
 						{#if upload.type === 'image'}
 							<img src={upload.url} alt={upload.name || 'image'} class="max-h-96 rounded-lg" />
 						{:else}
-							<div class="relative group py-1.5 px-2 w-48 flex items-center gap-1.5 bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/5 rounded-xl text-left flex-shrink-0 shadow-sm">
+							<div
+								class="relative group py-1.5 px-2 w-48 flex items-center gap-1.5 bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/5 rounded-xl text-left flex-shrink-0 shadow-sm"
+							>
 								<div class="shrink-0">
 									<Icon name="page-text" size={14} class="text-gray-500 dark:text-gray-400" />
 								</div>
 								<div class="flex flex-col justify-center w-full overflow-hidden">
-									<div class="dark:text-gray-100 text-xs flex justify-between items-center w-full gap-2">
+									<div
+										class="dark:text-gray-100 text-xs flex justify-between items-center w-full gap-2"
+									>
 										<div class="font-medium truncate flex-1">{upload.name || 'File'}</div>
-										<div class="text-[10px] text-gray-500 capitalize shrink-0">{upload.type === 'file' ? 'File' : (upload.type || 'File')}</div>
+										<div class="text-[10px] text-gray-500 capitalize shrink-0">
+											{upload.type === 'file' ? 'File' : upload.type || 'File'}
+										</div>
 									</div>
 								</div>
 							</div>

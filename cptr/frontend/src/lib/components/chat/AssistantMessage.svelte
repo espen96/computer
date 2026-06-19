@@ -348,7 +348,7 @@
 					></textarea>
 				{/if}
 			</div>
-			<div class="flex justify-between mt-2 text-[12px] font-medium">
+			<div class="flex justify-between mt-2 text-xs font-medium">
 				<button
 					class="px-3 py-1 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-100"
 					onclick={saveAsCopy}>{$t('chat.saveAs')}</button
