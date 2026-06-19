@@ -7,11 +7,7 @@
 	let { onclose }: { onclose: () => void } = $props();
 </script>
 
-<div
-	class="fixed bottom-4 right-4 z-50"
-	in:fade={{ duration: 100 }}
-	out:fade={{ duration: 75 }}
->
+<div class="fixed bottom-4 right-4 z-50" in:fade={{ duration: 100 }} out:fade={{ duration: 75 }}>
 	<div
 		class="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-white/6 bg-white dark:bg-[#1a1a1a] px-3 py-2"
 	>

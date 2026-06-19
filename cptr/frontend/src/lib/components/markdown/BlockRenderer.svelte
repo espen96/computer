@@ -34,7 +34,9 @@
 	{:else if token.type === 'paragraph'}
 		<p><InlineRenderer items={(token as Tokens.Paragraph).tokens} /></p>
 	{:else if token.type === 'blockMath'}
-		<div class="overflow-x-auto max-w-full my-3 py-2 text-center bg-gray-50/30 dark:bg-white/[0.01] rounded">
+		<div
+			class="overflow-x-auto max-w-full my-3 py-2 text-center bg-gray-50/30 dark:bg-white/[0.01] rounded"
+		>
 			{@html renderMath((token as any).text, true)}
 		</div>
 	{:else if token.type === 'code'}
@@ -49,7 +51,10 @@
 		</blockquote>
 	{:else if token.type === 'list'}
 		{@const list = token as Tokens.List}
-		<svelte:element this={list.ordered ? 'ol' : 'ul'} start={list.ordered && typeof list.start === 'number' ? list.start : undefined}>
+		<svelte:element
+			this={list.ordered ? 'ol' : 'ul'}
+			start={list.ordered && typeof list.start === 'number' ? list.start : undefined}
+		>
 			{#each list.items as item}
 				<li>
 					{#if item.task}

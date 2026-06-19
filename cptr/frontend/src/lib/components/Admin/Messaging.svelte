@@ -81,8 +81,10 @@
 		{#each bots as bot}
 			<div class="group flex items-center gap-2 w-full h-7">
 				<!-- Platform icon -->
-				<span class="shrink-0
-					{bot.is_running ? 'text-gray-400 dark:text-gray-500' : 'text-gray-300 dark:text-gray-700'}">
+				<span
+					class="shrink-0
+					{bot.is_running ? 'text-gray-400 dark:text-gray-500' : 'text-gray-300 dark:text-gray-700'}"
+				>
 					<Icon name={bot.platform} size={14} />
 				</span>
 
@@ -141,9 +143,5 @@
 {/if}
 
 {#if editBot}
-	<CreateBotModal
-		bot={editBot}
-		onclose={() => (editBot = null)}
-		onsave={handleSaved}
-	/>
+	<CreateBotModal bot={editBot} onclose={() => (editBot = null)} onsave={handleSaved} />
 {/if}

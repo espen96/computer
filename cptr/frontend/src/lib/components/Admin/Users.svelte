@@ -97,11 +97,7 @@
 <div class="flex flex-col gap-2.5 mb-3">
 	<label class="flex items-center justify-between cursor-pointer">
 		<span class="text-xs text-gray-600 dark:text-gray-400">{$t('admin.allowSignUp')}</span>
-		<ToggleSwitch
-			value={signupEnabled}
-			onchange={(v) => toggleSignup(v)}
-			disabled={savingConfig}
-		/>
+		<ToggleSwitch value={signupEnabled} onchange={(v) => toggleSignup(v)} disabled={savingConfig} />
 	</label>
 	<p class="text-[11px] text-gray-400 dark:text-gray-600 -mt-1">
 		{signupEnabled ? $t('admin.signUpEnabled') : $t('admin.signUpDisabled')}

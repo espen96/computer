@@ -36,7 +36,9 @@
 	let refreshing = $state(false);
 	let customModels = $state<ModelEntry[]>([]);
 	let baseModels = $state<ModelEntry[]>([]);
-	let rawModels = $state<{ id: string; name: string; provider: string; connection_id: string }[]>([]);
+	let rawModels = $state<{ id: string; name: string; provider: string; connection_id: string }[]>(
+		[]
+	);
 	let selectedModel = $state<ModelEntry | null>(null);
 	let modelsToDelete = $state<string[]>([]);
 
@@ -90,10 +92,10 @@ Files:
 
 	let hasDirty = $derived(
 		globalDirty ||
-		compactDirty ||
-		customModels.some((m) => m.dirty) ||
-		baseModels.some((m) => m.dirty) ||
-		modelsToDelete.length > 0
+			compactDirty ||
+			customModels.some((m) => m.dirty) ||
+			baseModels.some((m) => m.dirty) ||
+			modelsToDelete.length > 0
 	);
 
 	function parseRows(config: ModelConfigEntry | undefined): ParamRow[] {
@@ -311,9 +313,12 @@ Files:
 
 			// 3. Process custom models
 			for (const model of customModels) {
-				const sanitizedId = model.id.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+				const sanitizedId = model.id
+					.trim()
+					.toLowerCase()
+					.replace(/[^a-z0-9_-]/g, '-');
 				if (!sanitizedId) {
-					toast.error("Model ID cannot be empty");
+					toast.error('Model ID cannot be empty');
 					saving = false;
 					return;
 				}
@@ -473,27 +478,35 @@ Files:
 {/snippet}
 
 {#snippet modelForm(model: ModelEntry)}
-	<div class="mt-2 mb-4 p-3 bg-gray-50/50 dark:bg-white/2 border border-gray-100 dark:border-white/5 rounded-xl space-y-3">
+	<div
+		class="mt-2 mb-4 p-3 bg-gray-50/50 dark:bg-white/2 border border-gray-100 dark:border-white/5 rounded-xl space-y-3"
+	>
 		<!-- Name and ID row -->
 		<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 			<div>
-				<label class="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide font-medium" for="model-name-{model.id}">Model Name</label>
+				<label
+					class="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide font-medium"
+					for="model-name-{model.id}">Model Name</label
+				>
 				<input
 					id="model-name-{model.id}"
 					type="text"
 					bind:value={model.name}
-					oninput={() => model.dirty = true}
+					oninput={() => (model.dirty = true)}
 					placeholder="e.g. Gemma 4 | 12B"
 					class="w-full h-8 px-2.5 mt-1 rounded-lg text-xs bg-white dark:bg-white/5 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/8 outline-none focus:border-blue-500"
 				/>
 			</div>
 			<div>
-				<label class="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide font-medium" for="model-slug-{model.id}">Model ID / Slug</label>
+				<label
+					class="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide font-medium"
+					for="model-slug-{model.id}">Model ID / Slug</label
+				>
 				<input
 					id="model-slug-{model.id}"
 					type="text"
 					bind:value={model.id}
-					oninput={() => model.dirty = true}
+					oninput={() => (model.dirty = true)}
 					placeholder="e.g. gemma-4-12b"
 					class="w-full h-8 px-2.5 mt-1 rounded-lg text-xs bg-white dark:bg-white/5 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/8 outline-none focus:border-blue-500"
 				/>
@@ -502,12 +515,15 @@ Files:
 
 		<!-- Base Model selector -->
 		<div>
-			<label class="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide font-medium" for="base-model-{model.id}">Base Model (Inherits From)</label>
+			<label
+				class="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide font-medium"
+				for="base-model-{model.id}">Base Model (Inherits From)</label
+			>
 			<div class="relative mt-1">
 				<select
 					id="base-model-{model.id}"
 					bind:value={model.base_model}
-					onchange={() => model.dirty = true}
+					onchange={() => (model.dirty = true)}
 					class="w-full h-8 pl-2.5 pr-8 rounded-lg text-xs bg-white dark:bg-white/5 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/8 outline-none focus:border-blue-500 appearance-none cursor-pointer"
 				>
 					<option value="" disabled>Select a base model</option>
@@ -515,7 +531,9 @@ Files:
 						<option value={rm.id}>{rm.name || rm.id} ({rm.provider})</option>
 					{/each}
 				</select>
-				<div class="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-gray-400">
+				<div
+					class="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-gray-400"
+				>
 					<Icon name="chevron-down" size={10} />
 				</div>
 			</div>
@@ -559,7 +577,9 @@ Files:
 {/snippet}
 
 {#snippet baseModelForm(model: ModelEntry)}
-	<div class="mt-2 mb-4 p-3 bg-gray-50/50 dark:bg-white/2 border border-gray-100 dark:border-white/5 rounded-xl space-y-3">
+	<div
+		class="mt-2 mb-4 p-3 bg-gray-50/50 dark:bg-white/2 border border-gray-100 dark:border-white/5 rounded-xl space-y-3"
+	>
 		<!-- System prompt override -->
 		{@render systemPromptField(
 			model.systemPrompt,
@@ -693,12 +713,16 @@ Files:
 			{/if}
 
 			<!-- Custom models header -->
-			<div class="flex items-center justify-between mt-6 mb-2 border-t border-gray-100 dark:border-white/5 pt-4">
+			<div
+				class="flex items-center justify-between mt-6 mb-2 border-t border-gray-100 dark:border-white/5 pt-4"
+			>
 				<button
 					class="flex items-center gap-2 text-left"
 					onclick={() => (customModelsExpanded = !customModelsExpanded)}
 				>
-					<h3 class="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">
+					<h3
+						class="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider"
+					>
 						Custom Models
 					</h3>
 					<Icon
@@ -728,7 +752,8 @@ Files:
 								? 'text-gray-700 dark:text-gray-300'
 								: 'text-gray-400 dark:text-gray-600'}"
 						>
-							{model.name} <span class="text-[10px] text-gray-400 font-normal ml-2">({model.id})</span>
+							{model.name}
+							<span class="text-[10px] text-gray-400 font-normal ml-2">({model.id})</span>
 						</span>
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<span
@@ -747,9 +772,7 @@ Files:
 						>
 							<span
 								class="absolute top-0.5 w-2.5 h-2.5 rounded-full transition-all duration-150
-								{model.is_active
-									? 'left-3 bg-white dark:bg-gray-900'
-									: 'left-0.5 bg-white dark:bg-gray-500'}"
+								{model.is_active ? 'left-3 bg-white dark:bg-gray-900' : 'left-0.5 bg-white dark:bg-gray-500'}"
 							></span>
 						</span>
 					</button>
@@ -772,7 +795,9 @@ Files:
 					class="flex items-center gap-2 text-left"
 					onclick={() => (baseModelsExpanded = !baseModelsExpanded)}
 				>
-					<h3 class="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">
+					<h3
+						class="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider"
+					>
 						Base Models (Connections)
 					</h3>
 					<Icon
@@ -795,7 +820,8 @@ Files:
 								? 'text-gray-700 dark:text-gray-300'
 								: 'text-gray-400 dark:text-gray-600'}"
 						>
-							{model.name} <span class="text-[10px] text-gray-400 font-normal ml-2">({model.provider})</span>
+							{model.name}
+							<span class="text-[10px] text-gray-400 font-normal ml-2">({model.provider})</span>
 						</span>
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<span
@@ -814,9 +840,7 @@ Files:
 						>
 							<span
 								class="absolute top-0.5 w-2.5 h-2.5 rounded-full transition-all duration-150
-								{model.is_active
-									? 'left-3 bg-white dark:bg-gray-900'
-									: 'left-0.5 bg-white dark:bg-gray-500'}"
+								{model.is_active ? 'left-3 bg-white dark:bg-gray-900' : 'left-0.5 bg-white dark:bg-gray-500'}"
 							></span>
 						</span>
 					</button>

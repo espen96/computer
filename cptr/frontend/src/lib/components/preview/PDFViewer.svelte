@@ -308,8 +308,6 @@
 		color: #ef4444;
 	}
 
-
-
 	.zoom-toolbar {
 		position: absolute;
 		bottom: 12px;

@@ -24,7 +24,6 @@
 }
 
 @layer base {
-
 	*,
 	::after,
 	::before,
@@ -49,11 +48,10 @@
 	}
 
 	html {
-		--app-text-scale: 1.0;
+		--app-text-scale: 1;
 		color-scheme: dark light;
 		touch-action: manipulation;
 		font-size: calc(1rem * var(--app-text-scale, 1));
-
 	}
 
 	button {
@@ -162,12 +160,14 @@
 }
 
 .shimmer {
-	background: linear-gradient(110deg,
-			#b4b4b4 0%,
-			#b4b4b4 43%,
-			#e8e8e8 50%,
-			#b4b4b4 57%,
-			#b4b4b4 100%);
+	background: linear-gradient(
+		110deg,
+		#b4b4b4 0%,
+		#b4b4b4 43%,
+		#e8e8e8 50%,
+		#b4b4b4 57%,
+		#b4b4b4 100%
+	);
 	background-size: 200% 100%;
 	background-clip: text;
 	-webkit-background-clip: text;
@@ -177,12 +177,14 @@
 }
 
 .dark .shimmer {
-	background: linear-gradient(110deg,
-			#9a9a9a 0%,
-			#9a9a9a 43%,
-			#5e5e5e 50%,
-			#9a9a9a 57%,
-			#9a9a9a 100%);
+	background: linear-gradient(
+		110deg,
+		#9a9a9a 0%,
+		#9a9a9a 43%,
+		#5e5e5e 50%,
+		#9a9a9a 57%,
+		#9a9a9a 100%
+	);
 	background-size: 200% 100%;
 	background-clip: text;
 	-webkit-background-clip: text;

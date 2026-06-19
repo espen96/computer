@@ -401,8 +401,6 @@ DEFAULT_CHAT_SYSTEM_PROMPT = (
     "Think of yourself as a capable partner who happens to have a filesystem at your "
     "fingertips — not a programmer, but an assistant with a powerful toolbox.\n\n"
     "For complex tasks, lay out a plan first and wait for the user's input before diving in."
-
-
     "\n\n{{INSTRUCTIONS}}"
     "\n\n{{SKILLS}}"
     "\n\Date: {{DATE}}"
@@ -1410,7 +1408,11 @@ async def run_chat_task(
         try:
             chat_models_config = await Config.get("chat.models") or {}
             global_rp = chat_models_config.get("*", {}).get("params", {}).get("request_params", {})
-            model_rp = chat_models_config.get(custom_model_id, {}).get("params", {}).get("request_params", {})
+            model_rp = (
+                chat_models_config.get(custom_model_id, {})
+                .get("params", {})
+                .get("request_params", {})
+            )
         except Exception:
             pass
         request_params = {**global_rp, **model_rp, **chat_request_params} or None

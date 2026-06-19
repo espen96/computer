@@ -138,9 +138,7 @@ async def status(root: str) -> dict[str, Any]:
         upstream = ""
 
     # Get remote URL for "View on GitHub/GitLab" link
-    code, remote_out, _ = await _run(
-        "remote", "get-url", "origin", cwd=root, check=False
-    )
+    code, remote_out, _ = await _run("remote", "get-url", "origin", cwd=root, check=False)
     remote_url = remote_out.strip() if code == 0 else ""
 
     return {
@@ -271,9 +269,9 @@ async def discard(root: str, files: list[str]) -> None:
         check=False,
     )
 
-    to_unstage: list[str] = []   # staged changes that need unstaging first
+    to_unstage: list[str] = []  # staged changes that need unstaging first
     to_checkout: list[str] = []  # working-tree changes to restore from HEAD
-    to_delete: list[str] = []    # untracked / newly-added files to remove
+    to_delete: list[str] = []  # untracked / newly-added files to remove
 
     for line in st_out.splitlines():
         if line.startswith("? "):
@@ -526,9 +524,7 @@ async def uncommit(root: str) -> dict[str, str]:
     commits (no parent).
     """
     # Grab info about the commit we're about to undo
-    _, log_out, _ = await _run(
-        "log", "-1", "--format=%H%x00%h%x00%s", cwd=root, check=False
-    )
+    _, log_out, _ = await _run("log", "-1", "--format=%H%x00%h%x00%s", cwd=root, check=False)
     parts = log_out.strip().split("\x00")
     undone_hash = parts[1] if len(parts) >= 2 else ""
     undone_msg = parts[2] if len(parts) >= 3 else ""

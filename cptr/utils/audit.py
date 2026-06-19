@@ -27,8 +27,7 @@ _SENSITIVE_KEYS = {"password", "api_key", "token", "authorization", "cookie", "s
 def _redact(value: Any) -> Any:
     if isinstance(value, dict):
         return {
-            k: "********" if k.lower() in _SENSITIVE_KEYS else _redact(v)
-            for k, v in value.items()
+            k: "********" if k.lower() in _SENSITIVE_KEYS else _redact(v) for k, v in value.items()
         }
     if isinstance(value, list):
         return [_redact(v) for v in value]

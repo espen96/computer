@@ -220,9 +220,15 @@
 		<!-- Pagination -->
 		{#if !queryMode && totalRows > PAGE_SIZE}
 			<div class="pagination">
-				<button class="page-btn" onclick={prevPage} disabled={page === 0}>{$t('sqlite.prev')}</button>
+				<button class="page-btn" onclick={prevPage} disabled={page === 0}
+					>{$t('sqlite.prev')}</button
+				>
 				<span class="page-info">
-					{$t('sqlite.pageInfo', { start: page * PAGE_SIZE + 1, end: Math.min((page + 1) * PAGE_SIZE, totalRows), total: totalRows })}
+					{$t('sqlite.pageInfo', {
+						start: page * PAGE_SIZE + 1,
+						end: Math.min((page + 1) * PAGE_SIZE, totalRows),
+						total: totalRows
+					})}
 				</span>
 				<button class="page-btn" onclick={nextPage} disabled={(page + 1) * PAGE_SIZE >= totalRows}
 					>{$t('sqlite.next')}</button
@@ -253,8 +259,6 @@
 		font-size: 13px;
 		color: #ef4444;
 	}
-
-
 
 	/* ── Tab bar ──────────────────────────────────── */
 

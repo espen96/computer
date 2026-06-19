@@ -4,7 +4,9 @@
 import { fetchHandler, fetchJSON, jsonBody } from '$lib/apis';
 
 export const listDir = (path: string) =>
-	fetchJSON<{ path: string; entries: any[] }>(`/api/workspace/files?path=${encodeURIComponent(path)}`);
+	fetchJSON<{ path: string; entries: any[] }>(
+		`/api/workspace/files?path=${encodeURIComponent(path)}`
+	);
 
 export const readFile = (path: string) =>
 	fetchHandler(`/api/workspace/files/read?path=${encodeURIComponent(path)}`);

@@ -210,19 +210,16 @@ export const requestParams = writable<Record<string, unknown>>({});
 export const appVersion = writable('');
 export const lastSeenVersion = writable('');
 export const latestVersion = writable('');
-export const updateAvailable = derived(
-	[appVersion, latestVersion],
-	([$app, $latest]) => {
-		if (!$app || !$latest || $app === 'dev' || $app === '0.0.0') return false;
-		return (
-			$app.localeCompare($latest, undefined, {
-				numeric: true,
-				sensitivity: 'case',
-				caseFirst: 'upper'
-			}) < 0
-		);
-	}
-);
+export const updateAvailable = derived([appVersion, latestVersion], ([$app, $latest]) => {
+	if (!$app || !$latest || $app === 'dev' || $app === '0.0.0') return false;
+	return (
+		$app.localeCompare($latest, undefined, {
+			numeric: true,
+			sensitivity: 'case',
+			caseFirst: 'upper'
+		}) < 0
+	);
+});
 export const showChangelog = writable(false);
 export const showUpdateToastPref = writable(true);
 export const showSearch = writable(false);
@@ -245,7 +242,9 @@ export const pwaPreferences = writable<PwaPreferences>(defaultPwaPreferences);
 export const workspaceOrder = writable<string[]>([]);
 
 /** List of chat-mode workspaces for the sidebar. */
-export const chatList = writable<{ path: string; name: string; created_at: number; updated_at: number }[]>([]);
+export const chatList = writable<
+	{ path: string; name: string; created_at: number; updated_at: number }[]
+>([]);
 
 /** Set of tab IDs that are in chat mode (auto-generated workspace). */
 export const chatModeTabs = writable<Set<string>>(new Set());
@@ -458,7 +457,8 @@ export async function loadPreferences(): Promise<void> {
 		if (prefs.version) lastSeenVersion.set(prefs.version as string);
 		if (prefs.selectedModelId) selectedModelId.set(prefs.selectedModelId as string);
 		if (prefs.requestParams) requestParams.set(prefs.requestParams as Record<string, unknown>);
-		if (prefs.showUpdateToast !== undefined) showUpdateToastPref.set(prefs.showUpdateToast as boolean);
+		if (prefs.showUpdateToast !== undefined)
+			showUpdateToastPref.set(prefs.showUpdateToast as boolean);
 		const pwaPrefs = prefs.pwa;
 		if (pwaPrefs)
 			pwaPreferences.set({
@@ -549,18 +549,18 @@ export async function loadWorkspace(path: string): Promise<void> {
 				splitRatio: ws.splitRatio ?? 0.5,
 				fileBrowserCwd: ws.fileBrowserCwd ?? path
 			});
-	} else {
-		// First time opening this workspace, create defaults
-		// Chat-mode workspaces get a chat tab instead of Files tab
-		const isChatMode = path.includes('chat-workspaces');
-		if (isChatMode) {
-			const ws = createChatModeWorkspace(path);
-			if (wsData?.name) ws.name = wsData.name as string;
-			currentWorkspace.set(ws);
 		} else {
-			currentWorkspace.set(createDefaultWorkspace(path));
+			// First time opening this workspace, create defaults
+			// Chat-mode workspaces get a chat tab instead of Files tab
+			const isChatMode = path.includes('chat-workspaces');
+			if (isChatMode) {
+				const ws = createChatModeWorkspace(path);
+				if (wsData?.name) ws.name = wsData.name as string;
+				currentWorkspace.set(ws);
+			} else {
+				currentWorkspace.set(createDefaultWorkspace(path));
+			}
 		}
-	}
 	} catch {
 		// Error loading, create fresh workspace
 		const isChatMode = path.includes('chat-workspaces');
@@ -669,9 +669,7 @@ export function addWorkspace(path: string, name?: string): void {
 
 export async function renameWorkspace(path: string, newName: string): Promise<void> {
 	await renameWorkspaceApi(path, newName);
-	workspaceList.update((list) =>
-		list.map((w) => (w.path === path ? { ...w, name: newName } : w))
-	);
+	workspaceList.update((list) => list.map((w) => (w.path === path ? { ...w, name: newName } : w)));
 	// Also update currentWorkspace if it's the active one
 	currentWorkspace.update((ws) => {
 		if (ws?.path === path) {

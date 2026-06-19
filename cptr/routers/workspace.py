@@ -416,7 +416,6 @@ def walk_and_rank_files(root: Path, query: str, limit: int = 20) -> list[SearchR
     return [m[2] for m in matches[:limit]]
 
 
-
 # ── File management ──────────────────────────────────────────────
 
 

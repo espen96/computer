@@ -27,9 +27,7 @@ def _get_summarize_prompt() -> str:
         from cptr.utils.config import load_config
 
         config = load_config()
-        return config.get("chat", {}).get(
-            "compact_summary_prompt", DEFAULT_SUMMARIZE_PROMPT
-        )
+        return config.get("chat", {}).get("compact_summary_prompt", DEFAULT_SUMMARIZE_PROMPT)
     except Exception:
         return DEFAULT_SUMMARIZE_PROMPT
 
@@ -58,9 +56,7 @@ async def summarize_messages(
         role = m.get("role", "unknown")
         content = m.get("content", "")
         if isinstance(content, list):
-            content = " ".join(
-                b.get("text", "") for b in content if b.get("type") == "text"
-            )
+            content = " ".join(b.get("text", "") for b in content if b.get("type") == "text")
         # Truncate very long messages (e.g. tool outputs)
         if len(content) > 2000:
             content = content[:1000] + "\n...(truncated)...\n" + content[-500:]

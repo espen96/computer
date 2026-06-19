@@ -168,17 +168,13 @@ async def create_chat_completion(request: Request, body: ChatCompletionRequest):
 
     # Intercept OWUI utility tasks (follow-ups, title gen, tags gen).
     # These should go directly to the LLM, not through the agentic loop.
-    utility_result = await _intercept_task(
-        request, body, connection, bare_model, model_id
-    )
+    utility_result = await _intercept_task(request, body, connection, bare_model, model_id)
     if utility_result is not None:
         return utility_result
 
     # 3. Session mapping: find or create a cptr chat
     client_chat_id = request.headers.get(CHAT_ID_HEADER) or request.headers.get(OWUI_CHAT_ID_HEADER)
-    chat_id = await _ensure_chat(
-        user_id, workspace, client_chat_id, body.messages, model_id
-    )
+    chat_id = await _ensure_chat(user_id, workspace, client_chat_id, body.messages, model_id)
 
     # 4. Resolve message tree — map OWUI message IDs to cptr message IDs
     #    Supports: normal messages, regeneration (sibling), edit (fork)
@@ -193,12 +189,14 @@ async def create_chat_completion(request: Request, body: ChatCompletionRequest):
 
     # Export JSON so cptr sidebar sees it immediately
     from cptr.utils.chat_export import export_chat_to_file
+
     await export_chat_to_file(chat_id)
 
     # 5. Create output queue and start the agentic loop
     output_queue: asyncio.Queue = asyncio.Queue()
 
     from cptr.utils.chat_task import start_task
+
     start_task(
         message_id=assistant_msg.id,
         chat_id=chat_id,
@@ -231,11 +229,13 @@ async def create_chat_completion(request: Request, body: ChatCompletionRequest):
             "object": "chat.completion",
             "created": created,
             "model": body.model,
-            "choices": [{
-                "index": 0,
-                "message": {"role": "assistant", "content": full_text},
-                "finish_reason": "stop",
-            }],
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": full_text},
+                    "finish_reason": "stop",
+                }
+            ],
             "usage": {
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
@@ -536,11 +536,13 @@ async def _proxy_to_llm(
         "object": "chat.completion",
         "created": int(time.time()),
         "model": body.model,
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": result or ""},
-            "finish_reason": "stop",
-        }],
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": result or ""},
+                "finish_reason": "stop",
+            }
+        ],
         "usage": {
             "prompt_tokens": 0,
             "completion_tokens": 0,

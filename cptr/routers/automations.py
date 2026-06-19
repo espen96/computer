@@ -39,7 +39,12 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _automation_dict(a: Automation, last_run: AutomationRun | None = None, next_runs: list[int] | None = None, webhook_url: str | None = None) -> dict:
+def _automation_dict(
+    a: Automation,
+    last_run: AutomationRun | None = None,
+    next_runs: list[int] | None = None,
+    webhook_url: str | None = None,
+) -> dict:
     """Serialize an Automation to a response dict."""
     meta = a.meta or {}
     has_webhook = bool(meta.get("webhook_token"))
@@ -104,10 +109,7 @@ async def list_automations(
     latest_runs = await AutomationRun.get_latest_batch(ids) if ids else {}
 
     return {
-        "items": [
-            _automation_dict(a, last_run=latest_runs.get(a.id))
-            for a in items
-        ],
+        "items": [_automation_dict(a, last_run=latest_runs.get(a.id)) for a in items],
         "total": total,
     }
 
@@ -255,6 +257,7 @@ async def run_automation_now(
             body = await request.json()
             if body:
                 import json
+
                 webhook_payload = json.dumps(body, indent=2)
         except Exception:
             pass

@@ -61,7 +61,9 @@
 		try {
 			if ('wakeLock' in navigator) {
 				wakeLock = await navigator.wakeLock.request('screen');
-				wakeLock.addEventListener('release', () => { wakeLock = null; });
+				wakeLock.addEventListener('release', () => {
+					wakeLock = null;
+				});
 			}
 		} catch {
 			// Wake lock request can fail if document is hidden or permission denied

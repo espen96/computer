@@ -62,7 +62,9 @@
 	<Modal onclose={handleClose} class="w-full max-w-3xl mx-4 md:mx-0 flex flex-col max-h-[52vh]">
 		<div class="flex items-center gap-3 px-4 pt-4 pb-2 shrink-0">
 			<div class="min-w-0 flex-1">
-				<h2 class="text-sm font-medium text-gray-900 dark:text-white">{$t('changelog.whatsNew')}</h2>
+				<h2 class="text-sm font-medium text-gray-900 dark:text-white">
+					{$t('changelog.whatsNew')}
+				</h2>
 				{#if $appVersion}
 					<p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-600">
 						{$t('changelog.releaseNotes')}
@@ -86,7 +88,9 @@
 						<div>
 							<div class="mb-2">
 								<h3 class="text-[13px] font-semibold text-gray-900 dark:text-white">v{ver}</h3>
-								<p class="text-[10px] text-gray-400 dark:text-gray-600 mt-0.5">{formatDate(data.date)}</p>
+								<p class="text-[10px] text-gray-400 dark:text-gray-600 mt-0.5">
+									{formatDate(data.date)}
+								</p>
 							</div>
 
 							{#each Object.entries(data).filter(([key]) => key !== 'date') as [section, items]}
@@ -150,7 +154,8 @@
 			{:else}
 				<div class="flex flex-col items-center justify-center py-16 gap-3">
 					<Spinner size={16} />
-					<span class="text-[11px] text-gray-400 dark:text-gray-600">{$t('changelog.loading')}</span>
+					<span class="text-[11px] text-gray-400 dark:text-gray-600">{$t('changelog.loading')}</span
+					>
 				</div>
 			{/if}
 		</div>

@@ -209,7 +209,7 @@
 					</div>
 				{/each}
 			</div>
-		{/if}|
+		{/if}
 		<div class="flex justify-end">
 			<div class="max-w-[90%] px-4 py-2 rounded-2xl bg-gray-50 dark:bg-white/[0.08]">
 				<div

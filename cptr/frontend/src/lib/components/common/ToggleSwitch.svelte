@@ -18,8 +18,6 @@
 >
 	<span
 		class="absolute top-[2px] w-3 h-3 rounded-full transition-all duration-150
-			{value
-				? 'left-[14px] bg-white dark:bg-black'
-				: 'left-[2px] bg-white dark:bg-gray-500'}"
+			{value ? 'left-[14px] bg-white dark:bg-black' : 'left-[2px] bg-white dark:bg-gray-500'}"
 	></span>
 </button>

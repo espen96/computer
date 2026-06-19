@@ -102,10 +102,11 @@ export const deleteChat = (chatId: string) =>
 	fetchJSON<{ ok: boolean }>(`/api/chats/${chatId}`, { method: 'DELETE' });
 
 export const renameChat = (chatId: string, title: string) =>
-	fetchJSON<{ ok: boolean; title: string }>(
-		`/api/chats/${chatId}/title`,
-		{ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) }
-	);
+	fetchJSON<{ ok: boolean; title: string }>(`/api/chats/${chatId}/title`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ title })
+	});
 
 // ── Mutations ───────────────────────────────────────────────
 
