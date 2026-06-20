@@ -592,39 +592,32 @@ async def _load_message_history(chat_id: str, message_id: str) -> tuple[list[dic
         # messages.
         if m.output:
             # ── Collect the set of call_ids that have outputs ──
-            # This is needed to filter out orphaned function_calls
-            # (e.g. from crashes, partial persistence, or data corruption).
             output_call_ids = {
                 item["call_id"] for item in m.output if item.get("type") == "function_call_output"
             }
 
             # ── Group output items into per-iteration turns ──
-            turns: list[dict] = []  # each: {reasoning: [], calls: [], outputs: []}
-            current_turn: dict = {"reasoning": [], "calls": [], "outputs": []}
+            turns: list[dict] = []  # each: {reasoning: [], calls: [], outputs: [], messages: []}
+            current_turn: dict = {"reasoning": [], "calls": [], "outputs": [], "messages": []}
 
             for item in m.output:
                 itype = item.get("type")
-                if itype == "reasoning":
-                    # A reasoning item after we already have outputs means
+                if itype in ("reasoning", "message"):
+                    # A reasoning or message item after we already have outputs means
                     # a new API iteration started — flush the current turn.
                     if current_turn["outputs"]:
                         turns.append(current_turn)
-                        current_turn = {"reasoning": [], "calls": [], "outputs": []}
-                    current_turn["reasoning"].append(item)
+                        current_turn = {"reasoning": [], "calls": [], "outputs": [], "messages": []}
+                    if itype == "reasoning":
+                        current_turn["reasoning"].append(item)
+                    else:
+                        current_turn["messages"].append(item)
                 elif itype == "function_call" and item.get("status") == "completed":
-                    # Only include calls that have a matching output
                     if item["call_id"] not in output_call_ids:
-                        logger.warning(
-                            "[history] Skipping orphaned function_call %s (%s) — no matching output",
-                            item.get("call_id", "?"),
-                            item.get("name", "?"),
-                        )
                         continue
-                    # A new function_call after outputs means
-                    # a new iteration (model saw results and called again).
                     if current_turn["outputs"]:
                         turns.append(current_turn)
-                        current_turn = {"reasoning": [], "calls": [], "outputs": []}
+                        current_turn = {"reasoning": [], "calls": [], "outputs": [], "messages": []}
                     tc = {
                         "id": item["call_id"],
                         "type": "function",
@@ -633,91 +626,75 @@ async def _load_message_history(chat_id: str, message_id: str) -> tuple[list[dic
                             "arguments": json.dumps(item.get("arguments", {})),
                         },
                     }
-                    # Preserve Responses API fc_ ID for round-tripping
                     if item.get("fc_id"):
                         tc["fc_id"] = item["fc_id"]
                     current_turn["calls"].append(tc)
                 elif itype == "function_call_output":
                     current_turn["outputs"].append(item)
-                # Skip other types (message, artifact, pending calls, etc.)
 
-            # Don't forget the last turn
-            if current_turn["calls"] or current_turn["outputs"]:
+            if any(current_turn.values()):
                 turns.append(current_turn)
 
             if not turns:
-                # No tool calls — keep entry as-is (plain text assistant)
-                pass
+                result.append(entry)
             else:
+                has_message_items = any(i.get("type") == "message" for i in m.output)
                 for ti, turn in enumerate(turns):
-                    # Filter calls to only those with matching outputs
                     turn_output_ids = {o["call_id"] for o in turn["outputs"]}
                     matched_calls = [tc for tc in turn["calls"] if tc["id"] in turn_output_ids]
-                    call_names = {
-                        tc["id"]: tc.get("function", {}).get("name", "") for tc in turn["calls"]
-                    }
-                    if matched_calls:
-                        if ti == 0:
-                            # First turn: attach to the existing entry
-                            entry["tool_calls"] = matched_calls
-                            if turn["reasoning"]:
-                                entry["reasoning_items"] = turn["reasoning"]
-                        else:
-                            # Subsequent turns: flush the pending entry (last tool
-                            # result from previous turn) before creating a new one.
-                            result.append(entry)
-                            entry = {
-                                "role": "assistant",
-                                "content": "",
-                                "tool_calls": matched_calls,
-                            }
-                            if turn["reasoning"]:
-                                entry["reasoning_items"] = turn["reasoning"]
+                    call_names = {tc["id"]: tc.get("function", {}).get("name", "") for tc in turn["calls"]}
+                    
+                    turn_content = ""
+                    if has_message_items:
+                        turn_content = "".join(msg.get("text", "") for msg in turn["messages"])
+                    elif ti == len(turns) - 1:
+                        # Fallback for old DBs: attach the final content to the last turn.
+                        turn_content = entry.get("content", "")
+
+                    if matched_calls or turn_content or turn["reasoning"]:
+                        assistant_msg = {
+                            "role": "assistant",
+                            "content": turn_content,
+                        }
+                        if matched_calls:
+                            assistant_msg["tool_calls"] = matched_calls
+                        if turn["reasoning"]:
+                            assistant_msg["reasoning_items"] = turn["reasoning"]
+                        result.append(assistant_msg)
+
                     for out in turn["outputs"]:
-                        result.append(entry)
                         raw_output = _tool_result_for_model(
                             call_names.get(out["call_id"], ""),
                             out.get("output", ""),
                         )
-                        # Re-apply image data-URI detection so that image tool
-                        # results from previous turns are never sent as raw
-                        # base64 text in the content channel.
                         image = _parse_image_data_uri(raw_output)
                         if image:
                             media_type, b64_data = image
-                            # Recover the file path from the matching function_call item
                             matching_call = next(
                                 (
-                                    i
-                                    for i in m.output
-                                    if i.get("type") == "function_call"
-                                    and i.get("call_id") == out["call_id"]
+                                    i for i in m.output
+                                    if i.get("type") == "function_call" and i.get("call_id") == out["call_id"]
                                 ),
                                 None,
                             )
-                            img_path = (
-                                (matching_call or {}).get("arguments", {}).get("path", "image")
-                            )
-                            entry = {
+                            img_path = (matching_call or {}).get("arguments", {}).get("path", "image")
+                            tool_msg = {
                                 "role": "tool",
                                 "tool_call_id": out["call_id"],
                                 "content": [
                                     {"type": "text", "text": f"Image file: {img_path}"},
-                                    {
-                                        "type": "image",
-                                        "media_type": media_type,
-                                        "base64": b64_data,
-                                    },
+                                    {"type": "image", "media_type": media_type, "base64": b64_data},
                                 ],
                             }
                         else:
-                            entry = {
+                            tool_msg = {
                                 "role": "tool",
                                 "tool_call_id": out["call_id"],
                                 "content": raw_output,
                             }
-
-        result.append(entry)
+                        result.append(tool_msg)
+        else:
+            result.append(entry)
 
     # ── Final sanitization: ensure every tool_call has a matching tool result ──
     # This catches edge cases from compaction, DB corruption, or partial persistence.
