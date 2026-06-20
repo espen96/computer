@@ -7,13 +7,14 @@ export type MemoryOperation = {
 	old_text?: string;
 };
 
-export type MemorySettings = {
+export interface MemorySettings {
 	enabled: boolean;
 	tool_enabled: boolean;
 	background_review_enabled: boolean;
 	review_interval_turns: number;
 	user_char_limit: number;
 	workspace_char_limit: number;
+	review_model_id: string;
 };
 
 export type MemoryState = {

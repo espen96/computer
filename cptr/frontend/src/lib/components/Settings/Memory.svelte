@@ -3,6 +3,7 @@
 	import { toast } from 'svelte-sonner';
 	import ToggleSwitch from '$lib/components/common/ToggleSwitch.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
+	import ModelSelector from '$lib/components/common/ModelSelector.svelte';
 	import { currentWorkspace } from '$lib/stores';
 	import {
 		getMemory,
@@ -16,6 +17,7 @@
 	let settings = $state<MemorySettings | null>(null);
 	let userEntries = $state<string[]>([]);
 	let userUsage = $state('');
+	let reviewModelType = $state('same');
 
 	const workspace = $derived($currentWorkspace?.path || '');
 
@@ -30,6 +32,7 @@
 			settings = state.settings;
 			userEntries = state.user.entries;
 			userUsage = state.user.usage;
+			reviewModelType = settings?.review_model_id ? 'specific' : 'same';
 		} catch {
 			toast.error('Failed to load memory');
 		} finally {
@@ -95,6 +98,44 @@
 							onchange={(v) => (settings = { ...settings!, background_review_enabled: v })}
 						/>
 					</label>
+
+					{#if settings.background_review_enabled}
+						<div class="mt-1 pl-4 border-l-2 border-gray-100 dark:border-white/5 space-y-3">
+							<div>
+								<span class="text-xs text-gray-600 dark:text-gray-400 block mb-1.5"
+									>Model for background review</span
+								>
+								<div class="flex gap-2">
+									{#each [{ value: 'same', label: 'Same as active model' }, { value: 'specific', label: 'Specific model' }] as opt}
+										<button
+											class="flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs transition-colors duration-100
+											{reviewModelType === opt.value
+												? 'bg-gray-200/50 dark:bg-white/8 text-gray-900 dark:text-white font-medium'
+												: 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+											onclick={() => {
+												reviewModelType = opt.value;
+												if (reviewModelType === 'same') {
+													settings = { ...settings!, review_model_id: '' };
+												}
+											}}
+										>
+											{opt.label}
+										</button>
+									{/each}
+								</div>
+							</div>
+
+							{#if reviewModelType === 'specific'}
+								<div class="mt-2">
+									<ModelSelector
+										bind:selectedModel={settings.review_model_id}
+										preferAbove={false}
+										align="start"
+									/>
+								</div>
+							{/if}
+						</div>
+					{/if}
 				{/if}
 			</div>
 

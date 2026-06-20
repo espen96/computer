@@ -84,6 +84,7 @@ export interface UserPreferences {
 	pwa?: PwaPreferences;
 	mainProjectDirectory?: string;
 	workspaceMode?: 'project' | 'computer';
+	userMemoryEnabled?: boolean;
 }
 
 export type Theme = 'dark' | 'light' | 'system';
@@ -225,6 +226,8 @@ export const updateAvailable = derived([appVersion, latestVersion], ([$app, $lat
 export const showChangelog = writable(false);
 export const showUpdateToastPref = writable(true);
 export const showSearch = writable(false);
+export const showMemoryModal = writable(false);
+export const memoryModalScope = writable<'user' | 'workspace'>('user');
 /** @deprecated Use toolApprovalMode */
 export const autoApproveTools = {
 	subscribe: toolApprovalMode.subscribe,
@@ -241,6 +244,7 @@ export const selectedModelId = writable<string>('');
 export const pwaPreferences = writable<PwaPreferences>(defaultPwaPreferences);
 export const mainProjectDirectory = writable('');
 export const workspaceMode = writable<'project' | 'computer'>('computer');
+export const userMemoryEnabled = writable<boolean>(true);
 
 /** Saved workspace path order for sidebar drag-reorder. */
 export const workspaceOrder = writable<string[]>([]);
@@ -388,7 +392,8 @@ function persistPreferences(): void {
 			showUpdateToast: get(showUpdateToastPref),
 			pwa: get(pwaPreferences),
 			mainProjectDirectory: get(mainProjectDirectory),
-			workspaceMode: get(workspaceMode)
+			workspaceMode: get(workspaceMode),
+			userMemoryEnabled: get(userMemoryEnabled)
 		};
 		savePreferences(prefs as unknown as Record<string, unknown>).catch(() => {});
 	}, 300);
@@ -443,6 +448,9 @@ function subscribeForPersistence() {
 	workspaceMode.subscribe(() => {
 		if (get(stateLoaded)) persistPreferences();
 	});
+	userMemoryEnabled.subscribe(() => {
+		if (get(stateLoaded)) persistPreferences();
+	});
 	i18next.on('languageChanged', () => {
 		if (get(stateLoaded)) persistPreferences();
 	});
@@ -480,6 +488,7 @@ export async function loadPreferences(): Promise<void> {
 			});
 		if (prefs.mainProjectDirectory !== undefined) mainProjectDirectory.set(prefs.mainProjectDirectory as string);
 		if (prefs.workspaceMode !== undefined) workspaceMode.set(prefs.workspaceMode as 'project' | 'computer');
+		if (prefs.userMemoryEnabled !== undefined) userMemoryEnabled.set(prefs.userMemoryEnabled as boolean);
 	} catch {
 		// First run, no preferences yet
 	}

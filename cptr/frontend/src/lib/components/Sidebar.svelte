@@ -12,6 +12,8 @@
 		appVersion,
 		showChangelog,
 		showSearch,
+		showMemoryModal,
+		memoryModalScope,
 		chatList,
 		renameChat,
 		loadChatList
@@ -535,103 +537,6 @@
 				</a>
 			</div>
 		{/if}
-
-		<!-- Chats section header -->
-		{#if $chatEnabled}
-			<div class="flex items-center justify-between h-8 pl-3.5 pr-1.5 shrink-0">
-				<span class="text-xs text-gray-400 dark:text-gray-500">{$t('sidebar.chats')}</span>
-				<button
-					class="flex items-center justify-center w-7 h-7 rounded-lg text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors duration-100"
-					onclick={handleNewChatMode}
-					aria-label={$t('sidebar.newChat')}
-					use:tooltip={$t('sidebar.newChat')}
-				>
-					<Icon name="plus" size={14} />
-				</button>
-			</div>
-
-			<!-- Chat list -->
-			<div class="overflow-y-auto px-1.5 max-h-[40%]">
-				{#if $chatList.length === 0}
-					<div class="flex flex-col items-center justify-center py-8">
-						<p class="text-xs text-gray-400 dark:text-gray-600">{$t('sidebar.noChats')}</p>
-					</div>
-				{:else}
-					{#each chatDateGroups as group (group.label)}
-						<div class="mb-1">
-							<button
-								class="flex items-center gap-1 w-full h-6 px-2 text-[10px] font-medium text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors duration-75 uppercase tracking-wider"
-								onclick={() => toggleChatGroup(group.label)}
-							>
-								<span
-									class="inline-block transition-transform duration-150"
-									style="transform: rotate({expandedChatGroups.has(group.label)
-										? '90deg'
-										: '0deg'})"
-								>
-									<Icon name="chevron-right" size={9} />
-								</span>
-								{$t(`sidebar.chatGroup.${group.label}`)}
-								<span class="text-gray-300 dark:text-gray-700 font-normal normal-case ml-0.5"
-									>{group.chats.length}</span
-								>
-							</button>
-							{#if expandedChatGroups.has(group.label)}
-								{#each group.chats as chat (chat.path)}
-									<div
-										class="group flex items-center gap-1.5 w-full h-7 px-2 rounded-md cursor-pointer transition-colors duration-75
-										hover:bg-gray-50 dark:hover:bg-white/3
-										{chat.path === currentPath ? 'bg-gray-200/50 dark:bg-white/8' : ''}"
-										role="button"
-										tabindex="0"
-										onclick={() => handleChatItemClick(chat)}
-										onkeydown={(e) => {
-											if (e.key === 'Enter') handleChatItemClick(chat);
-										}}
-									>
-										{#if renamingChatPath === chat.path}
-											<input
-												bind:this={renameChatInputEl}
-												bind:value={renameChatValue}
-												type="text"
-												class="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-gray-900 dark:text-white"
-												onclick={(e) => e.stopPropagation()}
-												onkeydown={(e) => {
-													if (e.key === 'Enter') {
-														e.preventDefault();
-														commitRenameChat();
-													}
-													if (e.key === 'Escape') {
-														e.preventDefault();
-														cancelRenameChat();
-													}
-												}}
-												onblur={commitRenameChat}
-												spellcheck="false"
-											/>
-										{:else}
-											<span class="flex-1 text-xs text-gray-500 dark:text-gray-500 truncate min-w-0"
-												>{chat.name}</span
-											>
-										{/if}
-										<span
-											class="flex items-center justify-center w-4 h-4 shrink-0 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-75"
-											role="button"
-											tabindex="-1"
-											onclick={(e) => openChatMenu(e, chat.path)}
-											aria-label={$t('a11y.chatOptions')}
-										>
-											<Icon name="three-dots" size={11} />
-										</span>
-									</div>
-								{/each}
-							{/if}
-						</div>
-					{/each}
-				{/if}
-			</div>
-		{/if}
-
 		<!-- Workspace section header -->
 		<div class="flex items-center justify-between h-8 pl-3.5 pr-1.5 shrink-0">
 			<span class="text-xs text-gray-400 dark:text-gray-500">{$t('sidebar.workspaces')}</span>
@@ -771,6 +676,102 @@
 			{/if}
 		</div>
 
+		<!-- Chats section header -->
+		{#if $chatEnabled}
+			<div class="flex items-center justify-between h-8 pl-3.5 pr-1.5 shrink-0">
+				<span class="text-xs text-gray-400 dark:text-gray-500">{$t('sidebar.chats')}</span>
+				<button
+					class="flex items-center justify-center w-7 h-7 rounded-lg text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors duration-100"
+					onclick={handleNewChatMode}
+					aria-label={$t('sidebar.newChat')}
+					use:tooltip={$t('sidebar.newChat')}
+				>
+					<Icon name="plus" size={14} />
+				</button>
+			</div>
+
+			<!-- Chat list -->
+			<div class="overflow-y-auto px-1.5 flex-1">
+				{#if $chatList.length === 0}
+					<div class="flex flex-col items-center justify-center py-8">
+						<p class="text-xs text-gray-400 dark:text-gray-600">{$t('sidebar.noChats')}</p>
+					</div>
+				{:else}
+					{#each chatDateGroups as group (group.label)}
+						<div class="mb-1">
+							<button
+								class="flex items-center gap-1 w-full h-6 px-2 text-[10px] font-medium text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors duration-75 uppercase tracking-wider"
+								onclick={() => toggleChatGroup(group.label)}
+							>
+								<span
+									class="inline-block transition-transform duration-150"
+									style="transform: rotate({expandedChatGroups.has(group.label)
+										? '90deg'
+										: '0deg'})"
+								>
+									<Icon name="chevron-right" size={9} />
+								</span>
+								{$t(`sidebar.chatGroup.${group.label}`)}
+								<span class="text-gray-300 dark:text-gray-700 font-normal normal-case ml-0.5"
+									>{group.chats.length}</span
+								>
+							</button>
+							{#if expandedChatGroups.has(group.label)}
+								{#each group.chats as chat (chat.path)}
+									<div
+										class="group flex items-center gap-1.5 w-full h-7 px-2 rounded-md cursor-pointer transition-colors duration-75
+										hover:bg-gray-50 dark:hover:bg-white/3
+										{chat.path === currentPath ? 'bg-gray-200/50 dark:bg-white/8' : ''}"
+										role="button"
+										tabindex="0"
+										onclick={() => handleChatItemClick(chat)}
+										onkeydown={(e) => {
+											if (e.key === 'Enter') handleChatItemClick(chat);
+										}}
+									>
+										{#if renamingChatPath === chat.path}
+											<input
+												bind:this={renameChatInputEl}
+												bind:value={renameChatValue}
+												type="text"
+												class="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-gray-900 dark:text-white"
+												onclick={(e) => e.stopPropagation()}
+												onkeydown={(e) => {
+													if (e.key === 'Enter') {
+														e.preventDefault();
+														commitRenameChat();
+													}
+													if (e.key === 'Escape') {
+														e.preventDefault();
+														cancelRenameChat();
+													}
+												}}
+												onblur={commitRenameChat}
+												spellcheck="false"
+											/>
+										{:else}
+											<span class="flex-1 text-xs text-gray-500 dark:text-gray-500 truncate min-w-0"
+												>{chat.name}</span
+											>
+										{/if}
+										<span
+											class="flex items-center justify-center w-4 h-4 shrink-0 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-75"
+											role="button"
+											tabindex="-1"
+											onclick={(e) => openChatMenu(e, chat.path)}
+											aria-label={$t('a11y.chatOptions')}
+										>
+											<Icon name="three-dots" size={11} />
+										</span>
+									</div>
+								{/each}
+							{/if}
+						</div>
+					{/each}
+				{/if}
+			</div>
+		{/if}
+
 		<!-- Settings and profile footer pinned to the bottom -->
 		<div class="relative px-1 pb-0.5 shrink-0">
 			<button
@@ -822,6 +823,15 @@
 				: []),
 			...($session ? [{ divider: true, label: '', onclick: () => {} }] : []),
 			{
+				label: 'Personal Memories',
+				icon: 'brain',
+				onclick: () => {
+					memoryModalScope.set('user');
+					showMemoryModal.set(true);
+					showMenu = false;
+				}
+			},
+			{
 				label: $t('sidebar.settings'),
 				icon: 'settings',
 				shortcut: formatChord($keybindings.openSettings),
@@ -848,6 +858,15 @@
 				onclick: () => {
 					const ws = $workspaceList.find((w) => w.path === wsMenuPath);
 					if (ws) startRename(ws.path, ws.name);
+				}
+			},
+			{
+				label: 'Workspace Memories',
+				icon: 'brain',
+				onclick: () => {
+					memoryModalScope.set('workspace');
+					showMemoryModal.set(true);
+					closeWsMenu();
 				}
 			},
 			{

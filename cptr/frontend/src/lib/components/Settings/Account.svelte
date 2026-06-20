@@ -10,6 +10,8 @@
 	import { session, setSession } from '$lib/session';
 	import { t } from '$lib/i18n';
 	import Spinner from '$lib/components/common/Spinner.svelte';
+	import { userMemoryEnabled, showMemoryModal, memoryModalScope } from '$lib/stores';
+	import ToggleSwitch from '$lib/components/common/ToggleSwitch.svelte';
 
 	let currentPassword = $state('');
 	let newPassword = $state('');
@@ -223,6 +225,32 @@
 			{$t('account.updatePassword')}
 		{/if}
 	</button>
+
+	<!-- Memory Settings -->
+	<div class="mt-8 mb-2">
+		<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2">Memory</h3>
+		<div class="flex items-center justify-between mb-2">
+			<span class="text-[13px] text-gray-700 dark:text-gray-300">Personal Memory</span>
+			<ToggleSwitch
+				value={$userMemoryEnabled}
+				onchange={(v) => {
+					$userMemoryEnabled = v;
+				}}
+			/>
+		</div>
+		<p class="text-[11px] text-gray-400 dark:text-gray-600 mb-3">
+			Allow the assistant to build a personal memory about you to improve future conversations.
+		</p>
+		<button
+			class="text-[11px] text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors duration-100 border border-gray-200 dark:border-white/10 rounded-md px-2 py-1"
+			onclick={() => {
+				$memoryModalScope = 'user';
+				$showMemoryModal = true;
+			}}
+		>
+			Manage Personal Memories
+		</button>
+	</div>
 
 	<!-- Save -->
 	<div class="mt-auto pt-6 flex justify-end">

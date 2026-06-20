@@ -23,6 +23,7 @@ DEFAULT_MEMORY_SETTINGS: dict[str, Any] = {
     "review_interval_turns": 10,
     "user_char_limit": 2000,
     "workspace_char_limit": 3000,
+    "review_model_id": "",
 }
 
 _memory_file_locks: dict[str, asyncio.Lock] = {}
@@ -406,22 +407,51 @@ async def run_memory_review(
         from cptr.utils.config import _get_jwt_secret
         from cptr.utils.crypto import decrypt_key
         from cptr.utils.json_parser import extract_json
+        from cptr.models.user import UserState
+
+        state = await UserState.get_by_id(user_id, "global_preferences")
+        prefs = state.data if state else {}
+        if prefs.get("userMemoryEnabled") is False:
+            return
 
         memory_state = await read_memory_state(user_id, workspace)
         transcript = summarize_recent_conversation(conversation_messages, assistant_reply)
         prompt = build_memory_review_prompt(memory_state, workspace, transcript)
-        provider = model_connection["provider"]
-        api_key = decrypt_key(model_connection.get("api_key", ""), _get_jwt_secret())
-        base_url = model_connection.get("base_url") or _default_base_url(provider)
+        
+        settings = await get_memory_settings()
+        review_model_id = settings.get("review_model_id")
+        
+        if review_model_id:
+            from cptr.routers.chat import _resolve_connection
+            try:
+                connection, resolved_model = await _resolve_connection(review_model_id)
+                provider = connection["provider"]
+                api_key = decrypt_key(connection.get("api_key", ""), _get_jwt_secret())
+                base_url = connection.get("base_url") or _default_base_url(provider)
+                api_type = connection.get("api_type", "chat_completions")
+                model_to_use = resolved_model
+            except Exception:
+                provider = model_connection["provider"]
+                api_key = decrypt_key(model_connection.get("api_key", ""), _get_jwt_secret())
+                base_url = model_connection.get("base_url") or _default_base_url(provider)
+                api_type = model_connection.get("api_type", "chat_completions")
+                model_to_use = model
+        else:
+            provider = model_connection["provider"]
+            api_key = decrypt_key(model_connection.get("api_key", ""), _get_jwt_secret())
+            base_url = model_connection.get("base_url") or _default_base_url(provider)
+            api_type = model_connection.get("api_type", "chat_completions")
+            model_to_use = model
+
         text = await chat_completion(
             provider=provider,
             base_url=base_url,
             api_key=api_key,
-            model=model,
+            model=model_to_use,
             messages=[{"role": "user", "content": prompt}],
             system="You are cptr's private memory reviewer. Return only valid JSON.",
             max_tokens=700,
-            api_type=model_connection.get("api_type", "chat_completions"),
+            api_type=api_type,
         )
         parsed = extract_json(text)
         if not isinstance(parsed, dict):

@@ -12,6 +12,7 @@
 	import GitBar from '$lib/components/GitBar.svelte';
 	import SearchModal from '$lib/components/SearchModal.svelte';
 	import SettingsModal from '$lib/components/SettingsModal.svelte';
+	import MemoryModal from '$lib/components/MemoryModal.svelte';
 	import AuthScreen from '$lib/components/AuthScreen.svelte';
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 	import UpdateToast from '$lib/components/UpdateToast.svelte';
@@ -32,6 +33,7 @@
 		updateAvailable,
 		showChangelog,
 		showSearch,
+		showMemoryModal,
 		showUpdateToastPref
 	} from '$lib/stores';
 	import { matchKeybinding, executeAction } from '$lib/stores/keybindings';
@@ -496,6 +498,9 @@
 	{/if}
 	{#if showSettings}
 		<SettingsModal onclose={() => (showSettings = false)} />
+	{/if}
+	{#if $showMemoryModal}
+		<MemoryModal onclose={() => showMemoryModal.set(false)} />
 	{/if}
 	<ChangelogModal />
 	{#if $updateAvailable && showUpdateToast}
