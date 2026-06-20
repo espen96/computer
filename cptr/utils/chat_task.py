@@ -1457,6 +1457,12 @@ async def run_chat_task(
                     _sync_state()
                     await emit(output=item)
 
+                elif event["type"] == "prompt_progress":
+                    await emit(prompt_progress=event["progress"])
+
+                elif event["type"] == "timings":
+                    await emit(timings=event["timings"])
+
                 elif event["type"] == "usage":
                     usage = {k: v for k, v in event.items() if k != "type"}
                     if "total_tokens" not in usage:

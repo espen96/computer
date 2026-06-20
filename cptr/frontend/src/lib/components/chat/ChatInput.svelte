@@ -67,6 +67,8 @@
 		workspace?: string;
 		placeholder?: string;
 		contextUsage?: ContextUsage | null;
+		promptProgress?: any;
+		timings?: any;
 		queuedMessages?: { id: string; content: string }[];
 		onsend: () => void;
 		oncompact?: () => void;
@@ -85,6 +87,8 @@
 		workspace = '',
 		placeholder = 'Message...',
 		contextUsage = null,
+		promptProgress = null,
+		timings = null,
 		queuedMessages = [],
 		onsend,
 		oncompact,
@@ -987,6 +991,22 @@
 		</div>
 	{/if}
 
+	<!-- LLM Metrics (Prompt Progress & Timings) -->
+	{#if promptProgress || timings}
+		<div class="mb-2.5 mx-auto flex items-center justify-center gap-4 md:gap-6 text-[11px] font-mono text-gray-500 dark:text-gray-400 opacity-80 select-none">
+			{#if promptProgress}
+				{@const processed = (promptProgress.processed || 0) - (promptProgress.cache || 0)}
+				{@const total = (promptProgress.total || 0) - (promptProgress.cache || 0)}
+				{@const percent = total > 0 ? Math.round((processed / total) * 100) : 0}
+				<span>Processing {percent}%</span>
+			{:else if timings}
+				<span>Context: {timings.prompt_n || 0}/{contextUsage?.threshold || '∞'} ({contextUsage?.percent ? Math.round(contextUsage.percent) : 0}%)</span>
+				<span>Output: {timings.predicted_n || 0}/∞</span>
+				<span>{timings.predicted_per_second ? timings.predicted_per_second.toFixed(1) : '0.0'} t/s</span>
+			{/if}
+		</div>
+	{/if}
+
 	{#if showSlashCommands}
 		<div
 			class="absolute left-2 bottom-full mb-1 z-50 w-60 max-h-40 overflow-y-auto rounded-xl bg-white dark:bg-[#1a1a1a] border border-gray-150 dark:border-white/6 shadow-xl p-0.5"
@@ -1266,6 +1286,38 @@
 				{/if}
 			</div>
 			<div class="self-end mr-1 flex items-center gap-2">
+				{#if contextUsage}
+					<button
+						type="button"
+						class="flex items-center justify-center p-[5px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded-full hover:bg-gray-50 dark:hover:bg-white/8 transition-colors outline-none"
+						onclick={onstatus}
+						aria-label="Status"
+						title={`Context: ${contextPercent}%`}
+					>
+						<svg class="size-3.5 -rotate-90" viewBox="0 0 20 20" aria-hidden="true">
+							<circle
+								cx="10"
+								cy="10"
+								r="8"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								class="opacity-20"
+							/>
+							<circle
+								cx="10"
+								cy="10"
+								r="8"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-dasharray="50.27"
+								style={`stroke-dashoffset: ${contextCircleOffset};`}
+							/>
+						</svg>
+					</button>
+				{/if}
 				<ModelSelector bind:selectedModel />
 				<DictateButton
 					ontext={(text) => {

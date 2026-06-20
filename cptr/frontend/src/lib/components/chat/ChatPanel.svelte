@@ -88,6 +88,8 @@
 	let allMessages = $state<ChatMessageRow[]>([]);
 	let currentMessageId = $state<string | null>(null);
 	let contextUsage = $state<ContextUsage | null>(null);
+	let activePromptProgress = $state<any>(null);
+	let activeTimings = $state<any>(null);
 	let showStatusModal = $state(false);
 	let previousChats = $state<ChatInfo[]>([]);
 	let messagesEl: HTMLDivElement;
@@ -450,6 +452,9 @@
 			return;
 		}
 
+		if (data.prompt_progress) activePromptProgress = data.prompt_progress;
+		if (data.timings) activeTimings = data.timings;
+
 		const msg = allMessages.find((m) => m.id === data.message_id);
 		if (!msg) return;
 
@@ -520,6 +525,8 @@
 			// the DB reload returns. This avoids a transient blank message if the
 			// final `done` socket event beats the commit/read path.
 			msg.done = true;
+			activePromptProgress = null;
+			activeTimings = null;
 			allMessages = [...allMessages];
 			loadChat(data.chat_id);
 		}
@@ -1561,12 +1568,14 @@
 					{streaming}
 					{workspace}
 					{contextUsage}
+					promptProgress={activePromptProgress}
+					timings={activeTimings}
+					{queuedMessages}
 					onsend={send}
 					oncompact={handleManualCompact}
 					onplan={handlePlanCommand}
 					onstatus={handleStatusCommand}
 					oncancel={handleCancel}
-					{queuedMessages}
 					onqueuesendnow={handleQueueSendNow}
 					onqueueedit={handleQueueEdit}
 					onqueuedelete={handleQueueDelete}

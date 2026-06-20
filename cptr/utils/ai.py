@@ -476,6 +476,8 @@ async def stream_openai_completions(
         "messages": _to_openai_messages(form_data.messages, form_data.instructions),
         "stream": True,
         "stream_options": {"include_usage": True},
+        "return_progress": True,
+        "timings_per_token": True,
     }
     if tools:
         body["tools"] = tools
@@ -578,6 +580,20 @@ async def stream_openai_completions(
                                     "name": tc["name"],
                                     "arguments": json.loads(tc["arguments_json"]),
                                 }
+
+                        if chunk.get("prompt_progress"):
+                            emitted = True
+                            yield {
+                                "type": "prompt_progress",
+                                "progress": chunk["prompt_progress"],
+                            }
+
+                        if chunk.get("timings"):
+                            emitted = True
+                            yield {
+                                "type": "timings",
+                                "timings": chunk["timings"],
+                            }
 
                         if chunk.get("usage"):
                             # Emit any remaining reasoning BEFORE usage
