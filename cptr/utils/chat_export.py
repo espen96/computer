@@ -73,7 +73,7 @@ async def export_chat_to_file(chat_id: str) -> None:
         chats_dir = Path(workspace) / ".cptr" / "chats"
         chats_dir.mkdir(parents=True, exist_ok=True)
         target = chats_dir / f"{chat_id}.json"
-        target.write_text(json.dumps(chat_data, indent=2, ensure_ascii=False))
+        target.write_text(json.dumps(chat_data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     try:
         await asyncio.to_thread(_write)

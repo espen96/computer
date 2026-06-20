@@ -21,7 +21,7 @@ INSTRUCTION_FILENAMES = ["MEMORY.md", "AGENTS.md", "AGENT.md", "CLAUDE.md"]
 _TEMPLATE_RE = re.compile(r"\{\{(\w+)\}\}")
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You are Computer (cptr), a helpful assistant running inside the user's computer interface. "
+    "You are a helpful assistant running inside the user's computer interface. "
     "You have access to tools to read, search, and modify files in the workspace, "
     "run commands, and use configured tools. Use them to help the user directly."
     " Approach hard requests with initiative and persistence: make the best possible "
@@ -34,6 +34,21 @@ DEFAULT_SYSTEM_PROMPT = (
     "\nFiles:\n{{FILE_TREE}}"
 )
 
+DEFAULT_CHAT_SYSTEM_PROMPT = (
+    "You are an assistant with access to a sandboxed workspace environment. "
+    "You can read, search, and create files — and the user has direct access to the "
+    "same workspace, so you can collaborate by writing documents, generating artifacts, "
+    "organizing information, or building anything the user can then open and use.\n\n"
+    "Think of yourself as a capable partner who happens to have a filesystem at your "
+    "fingertips — not a programmer, but an assistant with a powerful toolbox.\n\n"
+    "For complex tasks, lay out a plan first and wait for the user's input before diving in."
+    "\n\n{{INSTRUCTIONS}}"
+    "\n\n{{SKILLS}}"
+    "\n\Date: {{DATE}}"
+    "\n\nWorkspace: {{WORKSPACE_NAME}}"
+    "\n\OS: {{OS}}"
+    "\nFiles:\n{{FILE_TREE}}"
+)
 
 def _get_file_tree(workspace: str, max_entries: int = 200) -> str:
     """Generate a compact file tree listing for the workspace."""
@@ -182,17 +197,19 @@ def _format_cptr_context(workspace: str, model: str = "") -> str:
 def _render_template(template: str, variables: dict[str, str]) -> str:
     """Render {{VARIABLE}} placeholders in a template string.
 
-    Known variables are substituted with their values. Unknown variables are left
-    intact so downstream providers or user-specific placeholders are not broken.
+    - Known variables are substituted with their values.
+    - Unrecognized {{...}} tokens are left as-is.
+    - Cleans up excess blank lines left by empty variable substitutions.
     """
 
     def _replace(match: re.Match) -> str:
         key = match.group(1)
         if key in variables:
             return variables[key]
-        return match.group(0)
+        return match.group(0)  # leave unrecognized tokens as-is
 
     result = _TEMPLATE_RE.sub(_replace, template)
+    # Clean up triple+ blank lines left by empty substitutions
     result = re.sub(r"\n{3,}", "\n\n", result)
     return result.strip()
 
@@ -281,8 +298,12 @@ async def load_system_prompt(workspace: str, model: str = "", user_id: str | Non
         except Exception:
             logger.debug("[system_prompt] Failed to load from config", exc_info=True)
 
+
+
     if template is None:
-        template = DEFAULT_SYSTEM_PROMPT
+        is_chat = "chat-workspaces" in workspace
+        template = DEFAULT_CHAT_SYSTEM_PROMPT if is_chat else DEFAULT_SYSTEM_PROMPT
+
 
     memory = ""
     if user_id:

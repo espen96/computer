@@ -28,13 +28,23 @@ def encrypt_key(plaintext: str, jwt_secret: str) -> str:
 def decrypt_key(stored: str, jwt_secret: str) -> str:
     """Decrypt an API key. Accepts 'encrypted:<token>' or plain text fallback."""
     if not stored.startswith("encrypted:"):
-        return stored  # Not encrypted, return as-is
-    token = stored[len("encrypted:") :]
-    f = Fernet(_derive_fernet_key(jwt_secret))
-    try:
-        return f.decrypt(token.encode()).decode()
-    except InvalidToken:
-        raise ValueError("Failed to decrypt API key. JWT secret may have changed")
+        key = stored  # Not encrypted, return as-is
+    else:
+        token = stored[len("encrypted:") :]
+        f = Fernet(_derive_fernet_key(jwt_secret))
+        try:
+            key = f.decrypt(token.encode()).decode()
+        except InvalidToken:
+            raise ValueError("Failed to decrypt API key. JWT secret may have changed")
+
+    # Sanitize the key to remove any non-ASCII characters (e.g. zero-width spaces,
+    # curly quotes, non-breaking spaces) which would cause httpx UnicodeEncodeError in headers.
+    if isinstance(key, str):
+        key = key.strip().replace("\xa0", "").replace("\u200b", "").replace("\u200c", "").replace("\u200d", "").replace("\ufeff", "")
+        key = key.replace("“", "").replace("”", "").replace("‘", "").replace("’", "")
+        key = "".join(c for c in key if 32 <= ord(c) <= 126)
+    return key
+
 
 
 def mask_key(key: str) -> str:

@@ -137,7 +137,7 @@ def save_config(config: dict):
                 else:
                     lines.append(f"{key_str} = {v}")
             lines.append("")
-    CONFIG_FILE.write_text("\n".join(lines))
+    CONFIG_FILE.write_text("\n".join(lines), encoding="utf-8")
     _config_cache = config
 
 
