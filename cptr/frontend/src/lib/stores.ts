@@ -681,7 +681,11 @@ export async function renameWorkspace(path: string, newName: string): Promise<vo
 
 export async function removeWorkspace(path: string): Promise<void> {
 	const { deleteWorkspace: deleteWs } = await import('$lib/apis/state');
-	await deleteWs(path);
+	try {
+		await deleteWs(path);
+	} catch (err) {
+		console.warn('[removeWorkspace] server delete failed or ignored:', err);
+	}
 	workspaceList.update((list) => list.filter((w) => w.path !== path));
 	workspaceOrder.update((order) => order.filter((p) => p !== path));
 
