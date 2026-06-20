@@ -518,7 +518,7 @@ async def _load_message_history(chat_id: str, message_id: str) -> tuple[list[dic
             continue
         entry: dict = {"role": m.role, "content": m.content or ""}
 
-        # Transform uploaded images into base64 multimodal blocks; build <attached_files> XML block for all files
+        # Transform uploaded images into base64 multimodal blocks; inline text files
         if m.role == "user":
             attached_files = (m.meta or {}).get("files", [])
             images = [
@@ -527,53 +527,28 @@ async def _load_message_history(chat_id: str, message_id: str) -> tuple[list[dic
                 if isinstance(f, dict)
                 and (f.get("type") == "image" or (f.get("content_type") or "").startswith("image/"))
             ]
+            non_images = [f for f in attached_files if isinstance(f, dict) and f not in images]
 
-            if attached_files:
+            if images or non_images:
                 from cptr.utils.storage import get_storage
                 import base64
-                from cptr.models import Chat
-                from xml.sax.saxutils import quoteattr
-
-                chat_obj = await Chat.get_by_id(chat_id)
-                workspace = chat_obj.meta.get("workspace") if chat_obj and chat_obj.meta else None
-
-                # Get the mapping of virtual filenames for this workspace
-                uploads_map = {}
-                if workspace:
-                    from cptr.utils.chat_uploads import _get_workspace_uploads_map
-                    uploads_map = await _get_workspace_uploads_map(workspace)
-
-                file_id_to_virtual = {info["id"]: vname for vname, info in uploads_map.items()}
-
-                xml_lines = ["<attached_files>"]
-                for f in attached_files:
-                    if not isinstance(f, dict):
-                        continue
-                    file_id = f.get("id")
-                    if not file_id:
-                        continue
-
-                    vname = file_id_to_virtual.get(file_id) or f.get("name") or "file"
-                    is_img = f.get("type") == "image" or (f.get("content_type") or "").startswith("image/")
-                    ftype = "image" if is_img else "file"
-                    content_type = f.get("content_type") or "application/octet-stream"
-                    vpath = f".cptr/chat_uploads/{vname}"
-
-                    q_type = quoteattr(ftype)
-                    q_name = quoteattr(vname)
-                    q_content_type = quoteattr(content_type)
-                    q_path = quoteattr(vpath)
-
-                    xml_lines.append(f'<file type={q_type} name={q_name} content_type={q_content_type} path={q_path}/>')
-
-                xml_lines.append("</attached_files>")
-                xml_block = "\n".join(xml_lines)
 
                 text_content = entry["content"]
-                if text_content:
-                    text_content += "\n" + xml_block
-                else:
-                    text_content = xml_block
+
+                # Append file:// references so the AI can read them with read_file
+                if non_images:
+                    from cptr.utils.storage import UPLOADS_DIR
+
+                    file_refs = []
+                    for f in non_images:
+                        file_id = f.get("id")
+                        if not file_id:
+                            continue
+                        name = f.get("name", "file")
+                        file_path = UPLOADS_DIR / file_id
+                        file_refs.append(f"[{name}](file://{file_path})")
+                    if file_refs:
+                        text_content += "\n\nAttached files:\n" + "\n".join(file_refs)
 
                 content_blocks = [{"type": "text", "text": text_content}] if text_content else []
 

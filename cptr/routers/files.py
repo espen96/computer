@@ -52,7 +52,7 @@ async def upload(request: Request, file: UploadFile = FastAPIFile(...)):
 
     # Include original extension in URL so browsers / tools can infer file type
     url_path = f"/api/files/{record.id}{ext}" if ext else f"/api/files/{record.id}"
-    return {"id": record.id, "url": url_path, "content_type": content_type}
+    return {"id": record.id, "url": url_path}
 
 
 @router.get("/{file_id_ext:path}")
