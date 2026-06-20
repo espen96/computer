@@ -35,6 +35,17 @@ class DirectoryListing(BaseModel):
 async def list_directory(path: str = Query(..., description="Absolute path to list")):
     """Return the contents of a directory, sorted dirs-first then alphabetical."""
 
+    from cptr.utils.chat_uploads import find_virtual_info, get_chat_upload_entries
+    is_under_virtual_dir, is_virtual_dir_itself, filename, workspace_path = find_virtual_info(path)
+
+    if is_under_virtual_dir:
+        if is_virtual_dir_itself and workspace_path:
+            entries_dicts = await get_chat_upload_entries(workspace_path)
+            entries = [FileEntry(**e) for e in entries_dicts]
+            return DirectoryListing(path=str(Path(path).resolve()), entries=entries)
+        else:
+            raise HTTPException(status_code=400, detail=f"Not a directory: {path}")
+
     target = Path(path).resolve()
 
     if not target.exists():
@@ -75,6 +86,12 @@ async def list_directory(path: str = Query(..., description="Absolute path to li
         entries = await asyncio.to_thread(_scan)
     except PermissionError:
         raise HTTPException(status_code=403, detail=f"Permission denied: {path}")
+
+    if target.name == ".cptr":
+        if not any(e.name == "chat_uploads" for e in entries):
+            entries.append(FileEntry(name="chat_uploads", type="directory"))
+            type_order = {"directory": 0, "symlink": 1, "file": 2}
+            entries.sort(key=lambda e: (type_order.get(e.type, 2), e.name.lower()))
 
     return DirectoryListing(path=str(target), entries=entries)
 
@@ -236,6 +253,49 @@ def _is_text_file(filepath: Path) -> bool:
 async def read_file(path: str = Query(..., description="Absolute path to file")):
     """Read the contents of a file."""
 
+    from cptr.utils.chat_uploads import find_virtual_info, resolve_chat_upload, read_chat_upload_bytes
+    is_under_virtual_dir, is_virtual_dir_itself, filename, workspace_path = find_virtual_info(path)
+
+    if is_under_virtual_dir:
+        if is_virtual_dir_itself:
+            raise HTTPException(status_code=400, detail=f"Not a file: {path}")
+        if not filename or not workspace_path:
+            raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+        info = await resolve_chat_upload(workspace_path, filename)
+        if not info:
+            raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+        data = await read_chat_upload_bytes(workspace_path, filename)
+        if data is None:
+            raise HTTPException(status_code=404, detail=f"Blob missing: {path}")
+
+        size = len(data)
+        if size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large ({size} bytes). Max is {MAX_FILE_SIZE} bytes.",
+            )
+
+        # Determine if it's text
+        ext = Path(filename).suffix.lower()
+        is_text = ext in TEXT_EXTENSIONS or Path(filename).name.lower() in {
+            "makefile", "dockerfile", "gemfile", "rakefile", "procfile", "license", "readme", "changelog"
+        } or (b"\x00" not in data[:8192])
+
+        content = None
+        if is_text:
+            content = data.decode("utf-8", errors="replace")
+
+        return FileContent(
+            path=str(Path(path).resolve()),
+            name=filename,
+            size=size,
+            binary=not is_text,
+            content=content,
+            language=_detect_language(filename) if is_text else None,
+        )
+
     target = Path(path).resolve()
 
     if not target.exists():
@@ -285,6 +345,11 @@ class WriteFileRequest(BaseModel):
 @router.post("/write")
 async def write_file(req: WriteFileRequest):
     """Write content to a file. Creates the file (and parent dirs) if it doesn't exist."""
+
+    from cptr.utils.chat_uploads import find_virtual_info
+    is_under_virtual_dir, _, _, _ = find_virtual_info(req.path)
+    if is_under_virtual_dir:
+        raise HTTPException(status_code=403, detail="Chat uploads directory is read-only")
 
     target = Path(req.path).resolve()
 
@@ -427,6 +492,11 @@ class CreateRequest(BaseModel):
 @router.post("/create")
 async def create_item(req: CreateRequest):
     """Create a new file or directory."""
+    from cptr.utils.chat_uploads import find_virtual_info
+    is_under_virtual_dir, _, _, _ = find_virtual_info(req.path)
+    if is_under_virtual_dir:
+        raise HTTPException(status_code=403, detail="Chat uploads directory is read-only")
+
     target = Path(req.path).resolve()
 
     if target.exists():
@@ -455,6 +525,46 @@ class MoveRequest(BaseModel):
 @router.post("/move")
 async def move_item(req: MoveRequest):
     """Move or rename a file/directory."""
+    from cptr.utils.chat_uploads import find_virtual_info, resolve_chat_upload, read_chat_upload_bytes
+    
+    is_dst_under_virtual, _, _, _ = find_virtual_info(req.destination)
+    if is_dst_under_virtual:
+        raise HTTPException(status_code=403, detail="Chat uploads directory is read-only")
+
+    is_src_under_virtual, is_src_virtual_dir_itself, filename, workspace_path = find_virtual_info(req.source)
+
+    if is_src_under_virtual:
+        if is_src_virtual_dir_itself:
+            raise HTTPException(status_code=400, detail="Cannot move the chat uploads directory itself")
+        if not filename or not workspace_path:
+            raise HTTPException(status_code=404, detail=f"Source not found: {req.source}")
+
+        info = await resolve_chat_upload(workspace_path, filename)
+        if not info:
+            raise HTTPException(status_code=404, detail=f"Source not found: {req.source}")
+
+        dst = Path(req.destination).resolve()
+        if dst.is_dir():
+            dst = dst / filename
+
+        if dst.exists():
+            raise HTTPException(status_code=409, detail=f"Destination exists: {dst}")
+
+        data = await read_chat_upload_bytes(workspace_path, filename)
+        if data is None:
+            raise HTTPException(status_code=404, detail=f"Source content missing: {req.source}")
+
+        def _write_copy():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_bytes(data)
+
+        try:
+            await asyncio.to_thread(_write_copy)
+        except (OSError, PermissionError) as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+        return {"status": "moved", "source": req.source, "destination": str(dst)}
+
     src = Path(req.source).resolve()
     dst = Path(req.destination).resolve()
 
@@ -483,6 +593,11 @@ class DeleteRequest(BaseModel):
 @router.post("/delete")
 async def delete_item(req: DeleteRequest):
     """Delete a file or directory."""
+    from cptr.utils.chat_uploads import find_virtual_info
+    is_under_virtual_dir, _, _, _ = find_virtual_info(req.path)
+    if is_under_virtual_dir:
+        raise HTTPException(status_code=403, detail="Chat uploads directory is read-only")
+
     import shutil
 
     target = Path(req.path).resolve()
@@ -513,6 +628,11 @@ async def upload_file(
     directory: str = Form(...),
 ):
     """Upload a file to a directory."""
+    from cptr.utils.chat_uploads import find_virtual_info
+    is_under_virtual_dir, _, _, _ = find_virtual_info(directory)
+    if is_under_virtual_dir:
+        raise HTTPException(status_code=403, detail="Chat uploads directory is read-only")
+
     target_dir = Path(directory).resolve()
 
     if not target_dir.is_dir():
@@ -558,6 +678,33 @@ async def view_file(path: str = Query(..., description="Absolute path to file"))
     save dialog), this endpoint lets the browser render the file inline —
     used by the frontend for image, PDF, video, and audio previews.
     """
+    from cptr.utils.chat_uploads import find_virtual_info, resolve_chat_upload, read_chat_upload_bytes
+    is_under_virtual_dir, is_virtual_dir_itself, filename, workspace_path = find_virtual_info(path)
+
+    if is_under_virtual_dir:
+        if is_virtual_dir_itself:
+            raise HTTPException(status_code=400, detail=f"Not a file: {path}")
+        if not filename or not workspace_path:
+            raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+        info = await resolve_chat_upload(workspace_path, filename)
+        if not info:
+            raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+        data = await read_chat_upload_bytes(workspace_path, filename)
+        if data is None:
+            raise HTTPException(status_code=404, detail=f"Blob missing: {path}")
+
+        from fastapi import Response
+        return Response(
+            content=data,
+            media_type=info["content_type"],
+            headers={
+                "Cache-Control": "public, max-age=3600",
+                "Content-Disposition": f'inline; filename="{filename}"',
+            }
+        )
+
     target = Path(path).resolve()
 
     if not target.exists():
@@ -580,6 +727,32 @@ async def view_file(path: str = Query(..., description="Absolute path to file"))
 @router.get("/download")
 async def download_file(path: str = Query(..., description="Absolute path to file")):
     """Download a file."""
+    from cptr.utils.chat_uploads import find_virtual_info, resolve_chat_upload, read_chat_upload_bytes
+    is_under_virtual_dir, is_virtual_dir_itself, filename, workspace_path = find_virtual_info(path)
+
+    if is_under_virtual_dir:
+        if is_virtual_dir_itself:
+            raise HTTPException(status_code=400, detail=f"Not a file: {path}")
+        if not filename or not workspace_path:
+            raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+        info = await resolve_chat_upload(workspace_path, filename)
+        if not info:
+            raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+        data = await read_chat_upload_bytes(workspace_path, filename)
+        if data is None:
+            raise HTTPException(status_code=404, detail=f"Blob missing: {path}")
+
+        from fastapi import Response
+        return Response(
+            content=data,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            }
+        )
+
     target = Path(path).resolve()
 
     if not target.exists():

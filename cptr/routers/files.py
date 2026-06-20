@@ -52,11 +52,11 @@ async def upload(request: Request, file: UploadFile = FastAPIFile(...)):
 
     # Include original extension in URL so browsers / tools can infer file type
     url_path = f"/api/files/{record.id}{ext}" if ext else f"/api/files/{record.id}"
-    return {"id": record.id, "url": url_path}
+    return {"id": record.id, "url": url_path, "content_type": content_type}
 
 
 @router.get("/{file_id_ext:path}")
-async def get_upload(file_id_ext: str):
+async def get_upload(file_id_ext: str, request: Request):
     """Serve an uploaded file. Public (no auth); UUID is unguessable.
 
     Accepts both /api/files/{uuid} and /api/files/{uuid}.{ext} so that
@@ -67,6 +67,45 @@ async def get_upload(file_id_ext: str):
 
     record = await File.get_by_id(file_id)
     if not record:
+        # Fallback: check if it's a real file path on the filesystem.
+        # This allows inline markdown images using absolute paths to render.
+        # We must authenticate the user first to prevent arbitrary local file disclosure.
+        from cptr.utils.config import check_access, load_config
+        client_host = request.client.host if request.client else "127.0.0.1"
+        jwt_token = request.cookies.get("cptr_session")
+        header_name = load_config().get("auth", {}).get("header", "Remote-User")
+        remote_user = request.headers.get(header_name)
+
+        auth = check_access(
+            client_host=client_host,
+            jwt_token=jwt_token,
+            remote_user_header=remote_user,
+        )
+        if not auth:
+            raise HTTPException(401, "Unauthorized")
+
+        from pathlib import Path
+        # Handle Windows absolute paths (e.g. C:/...) vs Unix absolute paths
+        if len(file_id_ext) >= 2 and file_id_ext[1] == ":":
+            target = Path(file_id_ext).resolve()
+        elif file_id_ext.startswith("/") or file_id_ext.startswith("\\"):
+            target = Path(file_id_ext).resolve()
+        else:
+            target = Path("/" + file_id_ext).resolve()
+
+        if target.is_file():
+            import mimetypes
+            from fastapi.responses import FileResponse
+            media_type, _ = mimetypes.guess_type(str(target))
+            return FileResponse(
+                path=str(target),
+                media_type=media_type or "application/octet-stream",
+                headers={
+                    "Cache-Control": "public, max-age=3600",
+                    "Content-Disposition": f'inline; filename="{target.name}"',
+                },
+            )
+
         raise HTTPException(404, "Not found")
 
     data = await get_storage().get(record.id)

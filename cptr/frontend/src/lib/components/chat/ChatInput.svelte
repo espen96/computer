@@ -131,7 +131,7 @@
 
 	// ── File Uploads ────────────────────────────────
 	let attachedUploads = $state<
-		{ id: string; name: string; url: string; type: string; loading?: boolean }[]
+		{ id: string; name: string; url: string; type: string; content_type: string; loading?: boolean }[]
 	>([]);
 	let isDragging = $state(false);
 
@@ -140,7 +140,7 @@
 			const id = Math.random().toString(36).substring(7);
 			const isImage = file.type.startsWith('image/');
 			const type = isImage ? 'image' : 'file';
-			attachedUploads = [...attachedUploads, { id, name: file.name, url: '', type, loading: true }];
+			attachedUploads = [...attachedUploads, { id, name: file.name, url: '', type, content_type: file.type || 'application/octet-stream', loading: true }];
 
 			try {
 				const form = new FormData();
@@ -148,7 +148,7 @@
 				const res = await uploadFile(form);
 				if (res && res.id) {
 					attachedUploads = attachedUploads.map((u) =>
-						u.id === id ? { ...u, id: res.id, url: res.url, loading: false } : u
+						u.id === id ? { ...u, id: res.id, url: res.url, content_type: res.content_type || u.content_type, loading: false } : u
 					);
 				} else {
 					attachedUploads = attachedUploads.filter((u) => u.id !== id);

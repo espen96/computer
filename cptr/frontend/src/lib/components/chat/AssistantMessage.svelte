@@ -10,6 +10,9 @@
 	import { ttsConfigured, ttsEnabled } from '$lib/stores/audio';
 	import Icon from '../Icon.svelte';
 	import { t } from '$lib/i18n';
+	import { fade, scale } from 'svelte/transition';
+
+	let activeModalImage = $state<string | null>(null);
 
 	interface Props {
 		content: string;
@@ -452,18 +455,17 @@
 					{:else if displayItem.type === 'image_item'}
 						<div class="my-2 grid max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
 							{#each displayItem.item.images || [] as image}
-								<a
-									href={image.url}
-									target="_blank"
-									rel="noreferrer"
-									class="block overflow-hidden rounded-lg border border-gray-200 dark:border-white/8 bg-gray-50 dark:bg-white/[0.03]"
+								<button
+									type="button"
+									class="block w-full overflow-hidden rounded-lg border border-gray-200 dark:border-white/8 bg-gray-50 dark:bg-white/[0.03] text-left hover:opacity-90 active:scale-95 transition-all duration-150 cursor-pointer"
+									onclick={() => (activeModalImage = image.url)}
 								>
 									<img
 										src={image.url}
 										alt={image.name || 'Generated image'}
 										class="max-h-96 w-full object-contain"
 									/>
-								</a>
+								</button>
 							{/each}
 						</div>
 					{:else if displayItem.type === 'activity_group'}
@@ -712,3 +714,44 @@
 		{/if}
 	{/if}
 </div>
+
+{#if activeModalImage}
+	<!-- Image modal overlay -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 bg-black/85 backdrop-blur-sm z-[150] flex items-center justify-center cursor-zoom-out"
+		onclick={() => (activeModalImage = null)}
+		transition:fade={{ duration: 150 }}
+	>
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="relative max-w-[92vw] max-h-[92vh] flex items-center justify-center p-2 cursor-default"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<img
+				src={activeModalImage}
+				alt="Zoomed preview"
+				class="max-w-full max-h-[88vh] object-contain rounded-2xl shadow-2xl select-none border border-white/10"
+				transition:scale={{ duration: 150, start: 0.95 }}
+			/>
+			<button
+				type="button"
+				class="absolute top-4 right-4 md:-top-2 md:-right-10 w-9 h-9 rounded-full bg-black/45 hover:bg-black/65 text-white flex items-center justify-center transition-all duration-150 shadow-md border border-white/5 hover:scale-105 active:scale-95 cursor-pointer backdrop-blur-sm"
+				onclick={() => (activeModalImage = null)}
+				aria-label="Close"
+			>
+				<Icon name="xmark" size={16} />
+			</button>
+		</div>
+	</div>
+{/if}
+
+<svelte:window
+	onkeydown={(e) => {
+		if (e.key === 'Escape' && activeModalImage) {
+			activeModalImage = null;
+		}
+	}}
+/>
