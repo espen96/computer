@@ -309,6 +309,9 @@
 			if (gen !== loadGeneration) return;
 			allMessages = data.messages;
 			currentMessageId = data.chat.current_message_id;
+			
+			initDefaultModel();
+
 			if (data.chat.title) {
 				if (tabId) {
 					chatTitle = data.chat.title;
@@ -526,14 +529,46 @@
 		if (chatId) loadChat(chatId);
 	}
 
-	onMount(() => {
+	function initDefaultModel() {
 		const models = get(chatModels);
-		const saved = get(selectedModelId);
 		const dm = get(defaultModel);
-		if (saved && models.some((m) => m.id === saved)) selectedModel = saved;
-		else if (dm) selectedModel = dm;
-		else if (models.length) selectedModel = models[0].id;
+		const saved = get(selectedModelId);
 
+		if (chatId && allMessages.length > 0) {
+			for (let i = allMessages.length - 1; i >= 0; i--) {
+				const msg = allMessages[i];
+				if (msg.model && models.some((m) => m.id === msg.model)) {
+					selectedModel = msg.model;
+					return;
+				}
+			}
+		}
+
+		if (dm && models.some((m) => m.id === dm)) {
+			selectedModel = dm;
+			return;
+		}
+
+		if (saved && models.some((m) => m.id === saved)) {
+			selectedModel = saved;
+			return;
+		}
+
+		if (models.length > 0) {
+			selectedModel = models[0].id;
+		}
+	}
+
+	$effect(() => {
+		const models = $chatModels;
+		const dm = $defaultModel;
+
+		if (!selectedModel || !models.some((m) => m.id === selectedModel)) {
+			initDefaultModel();
+		}
+	});
+
+	onMount(() => {
 		if (chatId) {
 			loadChat(chatId);
 		} else {
@@ -1470,6 +1505,7 @@
 								done={msg.done}
 								output={msg.output}
 								usage={msg.usage}
+								model={msg.model}
 								{chatId}
 								messageId={msg.id}
 								{siblingIndex}

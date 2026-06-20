@@ -11,6 +11,7 @@
 	import Icon from '../Icon.svelte';
 	import { t } from '$lib/i18n';
 	import { fade, scale } from 'svelte/transition';
+	import { chatModels } from '$lib/stores/chat';
 
 	let activeModalImage = $state<string | null>(null);
 
@@ -24,6 +25,7 @@
 		siblingIndex?: number;
 		siblingTotal?: number;
 		speaking?: boolean;
+		model?: string | null;
 		onapprove: (messageId: string, callId: string, approved: boolean) => void;
 		onnavigate?: (direction: -1 | 1) => void;
 		onregenerate?: () => void;
@@ -40,6 +42,7 @@
 		siblingIndex = 0,
 		siblingTotal = 1,
 		speaking = false,
+		model = null,
 		onapprove,
 		onnavigate,
 		onregenerate,
@@ -641,7 +644,7 @@
 						>
 					</button>
 				{/if}
-				{#if done && usage && Object.keys(usage).length > 0}
+				{#if done && ((usage && Object.keys(usage).length > 0) || model)}
 					<div class="relative flex items-center">
 						<button
 							class="p-0.5 rounded text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-100"
@@ -674,7 +677,14 @@
 									min-w-[160px] border border-transparent dark:border-gray-700"
 							>
 								<div class="space-y-0.5">
-									{#each Object.entries(usage) as [key, value]}
+									{#if model}
+										{@const modelName = $chatModels.find((m) => m.id === model)?.name || model}
+										<div class="flex justify-between gap-4 border-b border-gray-800 dark:border-gray-700 pb-1 mb-1">
+											<span class="text-gray-400 dark:text-gray-400">Model</span>
+											<span class="text-white dark:text-gray-200">{modelName}</span>
+										</div>
+									{/if}
+									{#each Object.entries(usage || {}) as [key, value]}
 										<div class="flex justify-between gap-4">
 											<span class="text-gray-400 dark:text-gray-400">{formatUsageLabel(key)}</span>
 											<span class="tabular-nums text-white dark:text-gray-200"

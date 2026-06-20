@@ -417,12 +417,14 @@
 	let welcomeSending = $state(false);
 
 	$effect(() => {
-		const models = get(chatModels);
-		const saved = get(selectedModelId);
-		const dm = get(defaultModel);
-		if (saved && models.some((m) => m.id === saved)) welcomeSelectedModel = saved;
-		else if (dm) welcomeSelectedModel = dm;
-		else if (models.length) welcomeSelectedModel = models[0].id;
+		const models = $chatModels;
+		const saved = $selectedModelId;
+		const dm = $defaultModel;
+		if (!welcomeSelectedModel || !models.some((m) => m.id === welcomeSelectedModel)) {
+			if (dm && models.some((m) => m.id === dm)) welcomeSelectedModel = dm;
+			else if (saved && models.some((m) => m.id === saved)) welcomeSelectedModel = saved;
+			else if (models.length > 0) welcomeSelectedModel = models[0].id;
+		}
 	});
 
 	$effect(() => {
