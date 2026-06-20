@@ -28,6 +28,7 @@
 		is_active: boolean;
 		rows: ParamRow[];
 		systemPrompt: string;
+		visionToolBehavior: string;
 		dirty: boolean;
 		isNew?: boolean;
 	};
@@ -48,6 +49,7 @@
 
 	let globalRows = $state<ParamRow[]>([]);
 	let globalSystemPrompt = $state('');
+	let globalVisionToolBehavior = $state('');
 	let globalDirty = $state(false);
 	let globalExpanded = $state(false);
 	let showVariables = $state(false);
@@ -133,6 +135,14 @@ Files:
 		preserveDirty = false
 	) {
 		const config = data.config || {};
+		const globalCfg = config['*'];
+		if (!preserveDirty) {
+			globalRows = parseRows(globalCfg);
+			globalSystemPrompt = globalCfg?.params?.system_prompt || '';
+			globalVisionToolBehavior = globalCfg?.params?.vision_tool_behavior || '';
+			globalDirty = false;
+		}
+
 		rawModels = data.models || [];
 
 		// 1. Process Base Models (raw models from connections)
@@ -151,6 +161,7 @@ Files:
 				is_active: mc?.is_active !== false,
 				rows: parseRows(mc),
 				systemPrompt: mc?.params?.system_prompt || '',
+				visionToolBehavior: mc?.params?.vision_tool_behavior || '',
 				dirty: false,
 				isNew: false
 			};
@@ -181,6 +192,7 @@ Files:
 					is_active: mc.is_active !== false,
 					rows: parseRows(mc),
 					systemPrompt: mc.params?.system_prompt || '',
+					visionToolBehavior: mc.params?.vision_tool_behavior || '',
 					dirty: false,
 					isNew: false
 				});
@@ -278,6 +290,7 @@ Files:
 			is_active: true,
 			rows: [],
 			systemPrompt: '',
+			visionToolBehavior: '',
 			dirty: true,
 			isNew: true
 		};
@@ -304,11 +317,12 @@ Files:
 		}
 	}
 
-	function buildParams(rows: ParamRow[], systemPrompt: string): Record<string, unknown> {
+	function buildParams(rows: ParamRow[], systemPrompt: string, visionToolBehavior: string): Record<string, unknown> {
 		const params: Record<string, unknown> = {};
 		const rp = rowsToRequestParams(rows);
 		if (Object.keys(rp).length) params.request_params = rp;
 		if (systemPrompt.trim()) params.system_prompt = systemPrompt.trim();
+		if (visionToolBehavior) params.vision_tool_behavior = visionToolBehavior;
 		return params;
 	}
 
@@ -326,7 +340,7 @@ Files:
 			if (globalDirty) {
 				promises.push(
 					updateModelConfig('*', {
-						params: buildParams(globalRows, globalSystemPrompt)
+						params: buildParams(globalRows, globalSystemPrompt, globalVisionToolBehavior)
 					})
 				);
 			}
@@ -348,7 +362,7 @@ Files:
 						is_active: model.is_active,
 						name: model.name,
 						base_model: model.base_model,
-						params: buildParams(model.rows, model.systemPrompt)
+						params: buildParams(model.rows, model.systemPrompt, model.visionToolBehavior)
 					};
 
 					if (model.originalId && model.originalId !== model.id) {
@@ -364,7 +378,7 @@ Files:
 				if (model.dirty) {
 					const updatePayload = {
 						is_active: model.is_active,
-						params: buildParams(model.rows, model.systemPrompt)
+						params: buildParams(model.rows, model.systemPrompt, model.visionToolBehavior)
 					};
 					promises.push(updateModelConfig(model.id, updatePayload));
 				}
@@ -448,6 +462,30 @@ Files:
 				{/each}
 			</div>
 		{/if}
+	</div>
+{/snippet}
+
+{#snippet visionBehaviorField(value: string, onInput: (v: string) => void)}
+	<div class="mb-2">
+		<span class="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide font-medium"
+			>{$t('models.visionToolBehavior') ?? 'Tool Image Behavior'}</span
+		>
+		<div class="relative mt-1">
+			<select
+				value={value}
+				onchange={(e) => onInput((e.target as HTMLSelectElement).value)}
+				class="w-full h-8 pl-2.5 pr-8 rounded-lg text-[11px] font-mono bg-white dark:bg-white/5 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-white/8 outline-none focus:border-blue-500 appearance-none cursor-pointer"
+			>
+				<option value="">Default (Auto)</option>
+				<option value="tool">Native Tool Block (Anthropic)</option>
+				<option value="user">User Message (OpenAI)</option>
+				<option value="assistant">Assistant Message</option>
+				<option value="drop">Drop Images</option>
+			</select>
+			<div class="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-gray-400">
+				<Icon name="chevron-down" size={10} />
+			</div>
+		</div>
 	</div>
 {/snippet}
 
@@ -573,6 +611,12 @@ Files:
 			$t('models.systemPromptInherited')
 		)}
 
+		<!-- Vision tool behavior override -->
+		{@render visionBehaviorField(model.visionToolBehavior, (v) => {
+			model.visionToolBehavior = v;
+			model.dirty = true;
+		})}
+
 		<!-- Request parameters -->
 		{@render paramRows(
 			model.rows,
@@ -613,6 +657,12 @@ Files:
 			},
 			$t('models.systemPromptInherited')
 		)}
+
+		<!-- Vision tool behavior override -->
+		{@render visionBehaviorField(model.visionToolBehavior, (v) => {
+			model.visionToolBehavior = v;
+			model.dirty = true;
+		})}
 
 		<!-- Request parameters -->
 		{@render paramRows(
@@ -764,9 +814,10 @@ Files:
 				<span class="flex-1 text-[13px] text-gray-500 dark:text-gray-400"
 					>{$t('models.defaults')}</span
 				>
-				{#if globalRows.filter((r) => r.key.trim()).length > 0 || globalSystemPrompt.trim()}
+				{#if globalRows.filter((r) => r.key.trim()).length > 0 || globalSystemPrompt.trim() || globalVisionToolBehavior}
 					<span class="text-[10px] text-gray-400 dark:text-gray-600">
 						{#if globalSystemPrompt.trim()}prompt{/if}
+						{#if globalVisionToolBehavior} vision{/if}
 						{#if globalRows.filter((r) => r.key.trim()).length > 0}
 							{globalRows.filter((r) => r.key.trim()).length} params
 						{/if}
@@ -788,6 +839,10 @@ Files:
 					},
 					DEFAULT_PROMPT_PLACEHOLDER
 				)}
+				{@render visionBehaviorField(globalVisionToolBehavior, (v) => {
+					globalVisionToolBehavior = v;
+					globalDirty = true;
+				})}
 				{@render paramRows(
 					globalRows,
 					() => (globalDirty = true),

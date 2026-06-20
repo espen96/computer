@@ -109,7 +109,7 @@ export const verifyConnection = (id: string) =>
 
 export interface ModelConfigEntry {
 	is_active?: boolean;
-	params?: { request_params?: Record<string, unknown>; system_prompt?: string };
+	params?: { request_params?: Record<string, unknown>; system_prompt?: string; vision_tool_behavior?: string };
 }
 
 export interface ModelConfigResponse {

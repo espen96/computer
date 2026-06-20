@@ -1319,13 +1319,19 @@ async def run_chat_task(
         chat_request_params = chat_params.get("request_params") or {}
         global_rp = {}
         model_rp = {}
+        vision_tool_behavior = "tool" if provider == "anthropic" else "user"
         try:
             chat_models_config = await Config.get("chat.models") or {}
-            global_rp = chat_models_config.get("*", {}).get("params", {}).get("request_params", {})
-            model_rp = (
-                chat_models_config.get(custom_model_id, {})
-                .get("params", {})
-                .get("request_params", {})
+            global_params = chat_models_config.get("*", {}).get("params", {})
+            model_params = chat_models_config.get(custom_model_id, {}).get("params", {})
+
+            global_rp = global_params.get("request_params", {})
+            model_rp = model_params.get("request_params", {})
+
+            vision_tool_behavior = (
+                model_params.get("vision_tool_behavior")
+                or global_params.get("vision_tool_behavior")
+                or vision_tool_behavior
             )
         except Exception:
             pass
@@ -1379,40 +1385,43 @@ async def run_chat_task(
                     len(summary),
                 )
 
-            # Anthropic supports images natively in tool_result content blocks.
-            # Chat Completions and Responses API don't support multimodal tool messages,
-            # so extract images and inject them as a user message immediately after
-            # the tool message they came from.  This keeps the conversation ordering
-            # stable: turn 3's image always appears right after turn 3's tool result,
-            # regardless of what turn we're currently on.
-            api_messages = messages
-            if provider != "anthropic":
-                api_messages = []
-                for m in messages:
-                    if m.get("role") == "tool" and isinstance(m.get("content"), list):
-                        text_parts = []
-                        tool_image_blocks = []
-                        for part in m["content"]:
-                            if part.get("type") == "text":
-                                text_parts.append(part.get("text", ""))
-                            elif part.get("type") == "image":
-                                tool_image_blocks.append(part)
-                        api_messages.append({**m, "content": "\n".join(text_parts)})
-                        if tool_image_blocks:
-                            api_messages.append(
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {
-                                            "type": "text",
-                                            "text": "Here are the images from the tool results above.",
-                                        },
-                                        *tool_image_blocks,
-                                    ],
-                                }
-                            )
-                    else:
+            # Handle images from tool results based on the model's vision capabilities:
+            # - "tool": Native multimodal tool blocks (e.g. Anthropic)
+            # - "user": Inject a user message immediately after the tool result (e.g. OpenAI)
+            # - "assistant": Inject an assistant message immediately after the tool result
+            # - "drop": Strip the images entirely
+            api_messages = []
+            for m in messages:
+                if m.get("role") == "tool" and isinstance(m.get("content"), list):
+                    if vision_tool_behavior == "tool":
                         api_messages.append(m)
+                        continue
+
+                    text_parts = []
+                    tool_image_blocks = []
+                    for part in m["content"]:
+                        if part.get("type") == "text":
+                            text_parts.append(part.get("text", ""))
+                        elif part.get("type") == "image":
+                            tool_image_blocks.append(part)
+                    
+                    api_messages.append({**m, "content": "\n".join(text_parts)})
+                    
+                    if tool_image_blocks and vision_tool_behavior in ("user", "assistant"):
+                        api_messages.append(
+                            {
+                                "role": vision_tool_behavior,
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "Here are the images from the tool results above.",
+                                    },
+                                    *tool_image_blocks,
+                                ],
+                            }
+                        )
+                else:
+                    api_messages.append(m)
 
             form_data = ChatCompletionForm(
                 model=model,

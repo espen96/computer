@@ -333,11 +333,11 @@ async def read_file(
     *,
     workspace: str,
 ) -> str:
-    """Read file contents with optional line range. Lines are 1-indexed.
-    Supports absolute paths for user-attached files.
+    """Read the contents of a file. Supports text files (with optional line ranges), image files, and will attempt to extract text from other documents (like PDF, DOCX, XLSX) on a best-effort basis.
+    Lines are 1-indexed. Supports absolute paths for user-attached files.
     :param path: Path relative to workspace root, or absolute path for attached files.
-    :param start_line: First line to read (1-indexed, 0 = from beginning).
-    :param end_line: Last line to read (inclusive, 0 = to end of file).
+    :param start_line: First line to read (1-indexed, 0 = from beginning). Applies to text and extracted documents.
+    :param end_line: Last line to read (inclusive, 0 = to end of file). Applies to text and extracted documents.
     """
     full = _resolve_path(path, workspace)
     if _is_dotenv(full):
