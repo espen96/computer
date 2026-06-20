@@ -21,7 +21,11 @@
 		showChangelog,
 		chatModeTabs,
 		showSearch,
-		pwaPreferences
+		pwaPreferences,
+		mainProjectDirectory,
+		workspaceMode,
+		chatList,
+		selectedModelId
 	} from '$lib/stores';
 	import type { Tab, EditorGroup } from '$lib/stores';
 	import { t } from '$lib/i18n';
@@ -37,10 +41,12 @@
 	import Terminal from '$lib/components/Terminal.svelte';
 	import PortPreview from '$lib/components/PortPreview.svelte';
 	import ChatPanel from '$lib/components/chat/ChatPanel.svelte';
+	import ChatInput from '$lib/components/chat/ChatInput.svelte';
 	import DirectoryPicker from '$lib/components/DirectoryPicker.svelte';
 	import GroupTabBar from '$lib/components/GroupTabBar.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import WorkspacePicker from '$lib/components/WorkspacePicker.svelte';
+	import Modal from '$lib/components/Modal.svelte';
 	import SystemInfo from '$lib/components/SystemInfo.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 
@@ -402,6 +408,102 @@
 		recent: { name: string; path: string }[];
 	} | null>(null);
 
+	import { chatModels, defaultModel } from '$lib/stores/chat';
+	import { toast } from 'svelte-sonner';
+
+	let welcomeInputText = $state('');
+	let welcomeSelectedModel = $state('');
+	let welcomeSending = $state(false);
+
+	$effect(() => {
+		const models = get(chatModels);
+		const saved = get(selectedModelId);
+		const dm = get(defaultModel);
+		if (saved && models.some((m) => m.id === saved)) welcomeSelectedModel = saved;
+		else if (dm) welcomeSelectedModel = dm;
+		else if (models.length) welcomeSelectedModel = models[0].id;
+	});
+
+	$effect(() => {
+		if (welcomeSelectedModel) selectedModelId.set(welcomeSelectedModel);
+	});
+
+	async function handleWelcomeSend() {
+		const text = welcomeInputText.trim();
+		if (!text || !welcomeSelectedModel) return;
+		welcomeSending = true;
+
+		// Resolve workspace path
+		let tempPath = '';
+		if (get(workspaceMode) === 'project') {
+			const root = get(mainProjectDirectory);
+			if (!root) {
+				toast.error('Please configure your Main Project Directory in Settings first.');
+				welcomeSending = false;
+				return;
+			}
+			tempPath = `${root}/chats/temp-${Date.now()}`;
+		} else {
+			tempPath = `~/.cptr/chat-workspaces/temp-${Date.now()}`;
+		}
+
+		try {
+			// Save draft and auto-send key in sessionStorage
+			sessionStorage.setItem(`cptr:intent:chatDraft:${tempPath}`, text);
+			sessionStorage.setItem(`cptr:intent:chatAutoSend:${tempPath}`, 'true');
+
+			// Create in-memory workspace
+			lastLoadedPath = tempPath;
+			currentWorkspace.set(createChatModeWorkspace(tempPath));
+			openChatModeTab();
+
+			welcomeInputText = '';
+		} catch (e) {
+			console.error(e);
+			toast.error('Failed to start chat');
+		} finally {
+			welcomeSending = false;
+		}
+	}
+
+	let showNewProjectModal = $state(false);
+	let newProjectName = $state('');
+	let creatingProject = $state(false);
+
+	async function handleCreateProject() {
+		const name = newProjectName.trim();
+		if (!name) return;
+
+		const root = get(mainProjectDirectory);
+		if (!root) {
+			toast.error('Please configure your Main Project Directory in Settings first.');
+			return;
+		}
+
+		creatingProject = true;
+		// Create project folder path
+		const projectPath = `${root}/${name}`;
+		try {
+			// Create directory on disk
+			await createEntry(projectPath, 'directory');
+
+			// Add workspace and redirect
+			addWorkspace(projectPath, name);
+			goto(`/?workspace=${encodeURIComponent(projectPath)}`);
+			showNewProjectModal = false;
+			newProjectName = '';
+		} catch (e: any) {
+			console.error(e);
+			if (e?.status === 409) {
+				toast.error('A project with that name already exists.');
+			} else {
+				toast.error('Failed to create project folder.');
+			}
+		} finally {
+			creatingProject = false;
+		}
+	}
+
 	// Fetch welcome data whenever no workspace is active
 	$effect(() => {
 		if (!$currentWorkspace) {
@@ -589,90 +691,175 @@
 </script>
 
 {#if !$currentWorkspace}
-	<div class="flex items-center justify-center h-full p-6 overflow-y-auto">
-		<div class="w-full max-w-md">
+	<div
+		class="flex flex-col items-center justify-start h-full p-6 overflow-y-auto bg-gray-50 dark:bg-gray-950/40"
+	>
+		<div class="w-full max-w-3xl flex flex-col items-center pt-[10dvh]">
 			<!-- Header -->
-			<div class="mb-4">
-				<div class="flex items-baseline gap-2">
-					<h1 class="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">cptr</h1>
-					{#if $appVersion}
-						<button
-							onclick={() => showChangelog.set(true)}
-							class="text-[11px] text-gray-400 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 font-mono hover:underline cursor-pointer"
+			<div class="mb-6 text-center">
+				<h1 class="text-3xl font-light tracking-tight text-gray-950 dark:text-white mb-2">
+					Ready when you are.
+				</h1>
+				<p class="text-xs text-gray-400 dark:text-gray-500 font-normal">
+					Start a quick chat below or open a project to begin
+				</p>
+			</div>
+
+			<!-- Chat Input Area -->
+			<div class="w-full max-w-2xl bg-transparent dark:bg-transparent p-1 mb-8">
+				<ChatInput
+					bind:inputText={welcomeInputText}
+					bind:selectedModel={welcomeSelectedModel}
+					sending={welcomeSending}
+					onsend={handleWelcomeSend}
+					placeholder="How can I help you today?"
+				/>
+			</div>
+
+			<!-- Content Grid -->
+			<div class="w-full grid grid-cols-1 md:grid-cols-2 gap-8 mt-4">
+				<!-- Recent Chats Column -->
+				<div class="flex flex-col">
+					<h3
+						class="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider mb-3"
+					>
+						Recent Chats
+					</h3>
+					{#if $chatList && $chatList.length > 0}
+						<div class="flex flex-col gap-1.5">
+							{#each $chatList.slice(0, 5) as chat}
+								<button
+									class="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-white/4 text-left transition-all duration-150 border border-transparent hover:border-gray-200 dark:hover:border-white/8 group cursor-pointer"
+									onclick={() => quickOpen(chat.path)}
+								>
+									<div
+										class="flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/6 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-white/10 group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors"
+									>
+										<Icon name="chat-bubble" size={15} />
+									</div>
+									<div class="flex-1 min-w-0">
+										<div
+											class="text-[13px] font-medium text-gray-700 dark:text-gray-300 truncate group-hover:text-gray-900 dark:group-hover:text-white"
+										>
+											{chat.name || 'Untitled Chat'}
+										</div>
+										<div
+											class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 truncate font-mono"
+										>
+											{shortenPath(chat.path)}
+										</div>
+									</div>
+								</button>
+							{/each}
+						</div>
+					{:else}
+						<div
+							class="p-6 rounded-xl border border-dashed border-gray-200 dark:border-white/6 text-center text-xs text-gray-400 dark:text-gray-600"
 						>
-							v{$appVersion}
-						</button>
+							No recent chats yet.
+						</div>
 					{/if}
 				</div>
-				{#if welcomeData?.hostname}
-					<p class="text-xs text-gray-400 dark:text-gray-600 mt-0.5 font-mono">
-						{welcomeData.hostname}
-					</p>
-				{/if}
-			</div>
 
-			<!-- System -->
-			{#if welcomeData?.system}
-				<div class="mb-6">
-					<SystemInfo system={welcomeData.system} processes={welcomeData.processes} />
-				</div>
-			{/if}
-
-			<!-- Start -->
-			<div class="mb-6">
-				<h2 class="text-xs text-gray-400 dark:text-gray-600 mb-2">{$t('home.start')}</h2>
-				<button
-					class="flex items-center gap-2 text-[13px] text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-100"
-					onclick={() => (showPicker = true)}
-				>
-					<Icon name="folder" size={15} strokeWidth={1.3} />
-					{$t('home.openFolder')}
-				</button>
-			</div>
-
-			<!-- Recent -->
-			{#if welcomeData?.recent?.length}
-				<div class="mb-6">
-					<h2 class="text-xs text-gray-400 dark:text-gray-600 mb-2">{$t('home.recent')}</h2>
-					<div class="flex flex-col">
-						{#each welcomeData.recent.slice(0, 5) as item}
+				<!-- Projects Column -->
+				<div class="flex flex-col">
+					<div
+						class="flex items-center justify-between mb-3 border-b border-gray-100 dark:border-white/6 pb-1.5"
+					>
+						<h3
+							class="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider"
+						>
+							Projects
+						</h3>
+						{#if $workspaceMode === 'project'}
 							<button
-								class="flex items-center gap-3 py-1.5 group text-left transition-colors duration-100 flex-col items-start"
-								onclick={() => quickOpen(item.path)}
+								class="flex items-center gap-1 text-[11px] font-medium text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors cursor-pointer"
+								onclick={() => (showNewProjectModal = true)}
 							>
-								<span
-									class="text-[13px] text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white"
-									>{item.name}</span
-								>
-								<span class="text-[11px] text-gray-400 dark:text-gray-600 font-mono"
-									>{shortenPath(item.path)}</span
-								>
+								<Icon name="plus" size={12} />
+								Start a new project
 							</button>
-						{/each}
-					</div>
-				</div>
-			{/if}
-
-			<!-- Suggestions -->
-			{#if welcomeData?.suggestions?.length}
-				<div>
-					<h2 class="text-xs text-gray-400 dark:text-gray-600 mb-2">{$t('home.folders')}</h2>
-					<div class="flex flex-col">
-						{#each welcomeData.suggestions.slice(0, 5) as item}
+						{:else}
 							<button
-								class="flex items-center gap-2 py-1.5 text-[13px] text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-100"
-								onclick={() => quickOpen(item.path)}
+								class="flex items-center gap-1 text-[11px] font-medium text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors cursor-pointer"
+								onclick={() => (showPicker = true)}
 							>
-								<Icon name="folder" size={14} strokeWidth={1.3} />
-								<span>{item.name}</span>
-								<span class="text-[11px] text-gray-400 dark:text-gray-600 font-mono"
-									>{shortenPath(item.path)}</span
-								>
+								<Icon name="folder" size={12} />
+								Open folder
 							</button>
-						{/each}
+						{/if}
 					</div>
+
+					<!-- Recent Projects List -->
+					{#if welcomeData?.recent?.length}
+						<div class="flex flex-col gap-1.5">
+							{#each welcomeData.recent.slice(0, 5) as item}
+								<button
+									class="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-white/4 text-left transition-all duration-150 border border-transparent hover:border-gray-200 dark:hover:border-white/8 group cursor-pointer"
+									onclick={() => quickOpen(item.path)}
+								>
+									<div
+										class="flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/6 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-white/10 group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors"
+									>
+										<Icon name="folder" size={14} />
+									</div>
+									<div class="flex-1 min-w-0">
+										<div
+											class="text-[13px] font-medium text-gray-700 dark:text-gray-300 truncate group-hover:text-gray-900 dark:group-hover:text-white"
+										>
+											{item.name}
+										</div>
+										<div
+											class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 truncate font-mono"
+										>
+											{shortenPath(item.path)}
+										</div>
+									</div>
+								</button>
+							{/each}
+						</div>
+					{:else}
+						<div
+							class="p-6 rounded-xl border border-dashed border-gray-200 dark:border-white/6 text-center text-xs text-gray-400 dark:text-gray-600"
+						>
+							No recent projects yet.
+						</div>
+					{/if}
+
+					<!-- Suggestions / Folders in computer mode -->
+					{#if $workspaceMode === 'computer' && welcomeData?.suggestions?.length}
+						<h3
+							class="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider mt-6 mb-3"
+						>
+							Suggested Folders
+						</h3>
+						<div class="flex flex-col gap-1.5">
+							{#each welcomeData.suggestions.slice(0, 3) as item}
+								<button
+									class="flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-white/4 text-left transition-all duration-150 border border-transparent hover:border-gray-200 dark:hover:border-white/8 group cursor-pointer"
+									onclick={() => quickOpen(item.path)}
+								>
+									<Icon
+										name="folder"
+										size={13}
+										class="text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300"
+									/>
+									<div class="flex-1 min-w-0 flex items-baseline gap-2">
+										<span
+											class="text-xs font-medium text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 truncate"
+										>
+											{item.name}
+										</span>
+										<span class="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate">
+											{shortenPath(item.path)}
+										</span>
+									</div>
+								</button>
+							{/each}
+						</div>
+					{/if}
 				</div>
-			{/if}
+			</div>
 		</div>
 	</div>
 {:else}
@@ -798,6 +985,51 @@
 		}}
 		onselect={folderPickerIntent ? handlePickedImportFolder : undefined}
 	/>
+{/if}
+
+{#if showNewProjectModal}
+	<Modal
+		onclose={() => {
+			showNewProjectModal = false;
+			newProjectName = '';
+		}}
+		class="w-full max-w-sm p-5 flex flex-col gap-4 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-white/6"
+	>
+		<h2 class="text-sm font-semibold text-gray-900 dark:text-white">Start a New Project</h2>
+		<div class="flex flex-col gap-1.5">
+			<label for="project-name-input" class="text-xs text-gray-500 dark:text-gray-400 font-medium"
+				>Project Name</label
+			>
+			<input
+				id="project-name-input"
+				type="text"
+				bind:value={newProjectName}
+				placeholder="my-new-app"
+				class="w-full h-8 px-2.5 rounded-lg text-xs bg-gray-100 dark:bg-white/6 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/8 outline-none focus:border-blue-400 dark:focus:border-blue-500 transition-colors font-mono"
+				onkeydown={(e) => {
+					if (e.key === 'Enter') handleCreateProject();
+				}}
+			/>
+		</div>
+		<div class="flex items-center justify-end gap-2 shrink-0">
+			<button
+				class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 px-3 py-1.5 rounded-lg transition-colors duration-100 cursor-pointer"
+				onclick={() => {
+					showNewProjectModal = false;
+					newProjectName = '';
+				}}
+			>
+				Cancel
+			</button>
+			<button
+				class="text-xs text-white dark:text-black bg-gray-950 dark:bg-white hover:bg-gray-800 dark:hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors duration-100 font-medium cursor-pointer"
+				onclick={handleCreateProject}
+				disabled={creatingProject}
+			>
+				{creatingProject ? 'Creating...' : 'Create'}
+			</button>
+		</div>
+	</Modal>
 {/if}
 
 <style>

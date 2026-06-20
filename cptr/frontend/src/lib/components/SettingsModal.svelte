@@ -8,6 +8,7 @@
 	import Account from './Settings/Account.svelte';
 	import Keyboard from './Settings/Keyboard.svelte';
 	import About from './Settings/About.svelte';
+	import SystemStats from './Settings/SystemStats.svelte';
 	import Users from './Admin/Users.svelte';
 	import Connections from './Admin/Connections.svelte';
 	import Models from './Admin/Models.svelte';
@@ -23,6 +24,7 @@
 
 	export type Tab =
 		| 'general'
+		| 'system_stats'
 		| 'memory'
 		| 'pwa'
 		| 'keyboard'
@@ -70,6 +72,7 @@
 	const personalTabs: SettingsTab[] = $derived.by(() => {
 		const tabs: SettingsTab[] = [
 			{ id: 'general', label: $t('settings.general'), icon: 'settings' },
+			{ id: 'system_stats', label: 'System Stats', icon: 'monitor' },
 			{ id: 'keyboard', label: $t('settings.keyboard'), icon: 'terminal' },
 			{ id: 'account', label: $t('settings.account'), icon: 'user' }
 		];
@@ -170,6 +173,8 @@
 	<div class="flex-1 overflow-y-auto min-h-0 p-4 md:px-5">
 			{#if activeTab === 'general'}
 				<General />
+			{:else if activeTab === 'system_stats'}
+				<SystemStats />
 			{:else if activeTab === 'memory'}
 				<Memory />
 			{:else if activeTab === 'pwa' && showPwaSettings}

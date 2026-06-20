@@ -506,7 +506,16 @@ async def send_message(body: SendMessageRequest, request: Request):
 
         # Chat mode: auto-generate workspace under configured root
         if body.chat_mode:
-            chat_root = await Config.get("chat.workspace_root") or str(DATA_DIR / "chat-workspaces")
+            from cptr.models import UserStates
+            prefs = await UserStates.get_data(user_id) or {}
+            workspace_mode = prefs.get("workspaceMode", "computer")
+            main_project_dir = prefs.get("mainProjectDirectory")
+            
+            if workspace_mode == "project" and main_project_dir:
+                chat_root = str(Path(main_project_dir) / "chats")
+            else:
+                chat_root = await Config.get("chat.workspace_root") or str(DATA_DIR / "chat-workspaces")
+                
             workspace_path = str(Path(chat_root) / chat.id)
             chat.meta["workspace"] = workspace_path
             await Chat.update_meta(chat.id, chat.meta)

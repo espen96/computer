@@ -82,6 +82,8 @@ export interface UserPreferences {
 	requestParams?: Record<string, unknown>; // arbitrary params merged into API request body
 	showUpdateToast?: boolean; // show version update notifications (default true)
 	pwa?: PwaPreferences;
+	mainProjectDirectory?: string;
+	workspaceMode?: 'project' | 'computer';
 }
 
 export type Theme = 'dark' | 'light' | 'system';
@@ -237,6 +239,8 @@ export type StreamingBehavior = 'queue' | 'interrupt';
 export const streamingBehavior = writable<StreamingBehavior>('queue');
 export const selectedModelId = writable<string>('');
 export const pwaPreferences = writable<PwaPreferences>(defaultPwaPreferences);
+export const mainProjectDirectory = writable('');
+export const workspaceMode = writable<'project' | 'computer'>('computer');
 
 /** Saved workspace path order for sidebar drag-reorder. */
 export const workspaceOrder = writable<string[]>([]);
@@ -361,6 +365,7 @@ function persistWorkspace(): void {
 	_saveWsTimer = setTimeout(() => {
 		const ws = get(currentWorkspace);
 		if (!ws) return;
+		if (ws.path.includes('/temp-')) return;
 		saveWorkspaceState(ws.path, ws as unknown as Record<string, unknown>).catch(() => {});
 	}, 300);
 }
@@ -381,7 +386,9 @@ function persistPreferences(): void {
 			selectedModelId: get(selectedModelId) || undefined,
 			requestParams: Object.keys(get(requestParams)).length ? get(requestParams) : undefined,
 			showUpdateToast: get(showUpdateToastPref),
-			pwa: get(pwaPreferences)
+			pwa: get(pwaPreferences),
+			mainProjectDirectory: get(mainProjectDirectory),
+			workspaceMode: get(workspaceMode)
 		};
 		savePreferences(prefs as unknown as Record<string, unknown>).catch(() => {});
 	}, 300);
@@ -430,6 +437,12 @@ function subscribeForPersistence() {
 	pwaPreferences.subscribe(() => {
 		if (get(stateLoaded)) persistPreferences();
 	});
+	mainProjectDirectory.subscribe(() => {
+		if (get(stateLoaded)) persistPreferences();
+	});
+	workspaceMode.subscribe(() => {
+		if (get(stateLoaded)) persistPreferences();
+	});
 	i18next.on('languageChanged', () => {
 		if (get(stateLoaded)) persistPreferences();
 	});
@@ -465,6 +478,8 @@ export async function loadPreferences(): Promise<void> {
 				...defaultPwaPreferences,
 				...(pwaPrefs as PwaPreferences)
 			});
+		if (prefs.mainProjectDirectory !== undefined) mainProjectDirectory.set(prefs.mainProjectDirectory as string);
+		if (prefs.workspaceMode !== undefined) workspaceMode.set(prefs.workspaceMode as 'project' | 'computer');
 	} catch {
 		// First run, no preferences yet
 	}
@@ -652,6 +667,7 @@ if (typeof BroadcastChannel !== 'undefined') {
  * The URL is the single source of truth for which workspace is active.
  */
 export function addWorkspace(path: string, name?: string): void {
+	if (path.includes('/temp-')) return;
 	const displayName = name || path.split('/').filter(Boolean).pop() || path;
 
 	// Update workspace list for sidebar

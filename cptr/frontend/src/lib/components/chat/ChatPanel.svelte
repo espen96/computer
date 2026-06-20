@@ -126,6 +126,12 @@
 		if (draft) {
 			inputText = draft;
 			sessionStorage.removeItem(key);
+
+			const autoSendKey = `cptr:intent:chatAutoSend:${workspace}`;
+			if (sessionStorage.getItem(autoSendKey) === 'true') {
+				sessionStorage.removeItem(autoSendKey);
+				tick().then(() => send());
+			}
 		}
 	});
 

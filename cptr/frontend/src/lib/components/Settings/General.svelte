@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 	import Icon from '../Icon.svelte';
-	import { theme, streamingBehavior, showUpdateToastPref } from '$lib/stores';
+	import { theme, streamingBehavior, showUpdateToastPref, mainProjectDirectory, workspaceMode } from '$lib/stores';
 	import type { Theme, StreamingBehavior } from '$lib/stores';
 	import { t, locale, changeLocale, supportedLocales } from '$lib/i18n';
 	import { notificationsEnabled, notificationSound } from '$lib/stores/chat';
@@ -191,6 +191,49 @@
 				</p>
 			</div>
 		{/if}
+
+		<!-- Project Settings -->
+		<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">Project Settings</h3>
+		<div class="flex flex-col gap-2.5">
+			<div>
+				<label class="text-xs text-gray-600 dark:text-gray-400" for="main-project-dir">
+					Main Project Directory
+				</label>
+				<input
+					id="main-project-dir"
+					type="text"
+					value={$mainProjectDirectory}
+					oninput={(e) => mainProjectDirectory.set((e.target as HTMLInputElement).value)}
+					placeholder="e.g. C:/Users/name/Projects"
+					class="w-full mt-1 h-7 px-2 rounded-lg text-xs bg-gray-100 dark:bg-white/6 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/8 outline-none focus:border-blue-400 dark:focus:border-blue-500 transition-colors font-mono"
+				/>
+				<p class="text-[11px] text-gray-400 dark:text-gray-600 mt-1">
+					The directory where new projects will be created.
+				</p>
+			</div>
+
+			<div>
+				<h4 class="text-xs text-gray-600 dark:text-gray-400 mb-2">Workspace Selection Behavior</h4>
+				<div class="flex gap-1">
+					{#each [{ value: 'computer', label: 'Computer Mode' }, { value: 'project', label: 'Project Mode' }] as opt}
+						<button
+							class="flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs transition-colors duration-100
+							{$workspaceMode === opt.value
+								? 'bg-gray-200/50 dark:bg-white/8 text-gray-900 dark:text-white font-medium'
+								: 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}"
+							onclick={() => workspaceMode.set(opt.value as 'project' | 'computer')}
+						>
+							{opt.label}
+						</button>
+					{/each}
+				</div>
+				<p class="text-[11px] text-gray-400 dark:text-gray-600 mt-1">
+					{$workspaceMode === 'computer'
+						? 'Workspaces are computer paths you select.'
+						: 'New chats and projects are created at the path set in the settings.'}
+				</p>
+			</div>
+		</div>
 
 		<h3 class="text-xs text-gray-400 dark:text-gray-600 mb-2 mt-5">{$t('general.messageQueue')}</h3>
 		<div class="flex gap-1">
