@@ -135,7 +135,14 @@
 
 	// ── File Uploads ────────────────────────────────
 	let attachedUploads = $state<
-		{ id: string; name: string; url: string; type: string; loading?: boolean; content_type?: string }[]
+		{
+			id: string;
+			name: string;
+			url: string;
+			type: string;
+			loading?: boolean;
+			content_type?: string;
+		}[]
 	>([]);
 	let isDragging = $state(false);
 
@@ -152,7 +159,9 @@
 				const res = await uploadFile(form);
 				if (res && res.id) {
 					attachedUploads = attachedUploads.map((u) =>
-						u.id === id ? { ...u, id: res.id, url: res.url, content_type: res.content_type, loading: false } : u
+						u.id === id
+							? { ...u, id: res.id, url: res.url, content_type: res.content_type, loading: false }
+							: u
 					);
 				} else {
 					attachedUploads = attachedUploads.filter((u) => u.id !== id);
@@ -993,16 +1002,26 @@
 
 	<!-- LLM Metrics (Prompt Progress & Timings) -->
 	{#if promptProgress || timings}
-		<div class="mb-2.5 mx-auto flex items-center justify-center gap-4 md:gap-6 text-[11px] font-mono text-gray-500 dark:text-gray-400 opacity-80 select-none">
+		<div
+			class="mb-2.5 mx-auto flex items-center justify-center gap-4 md:gap-6 text-[11px] font-mono text-gray-500 dark:text-gray-400 opacity-80 select-none"
+		>
 			{#if promptProgress}
 				{@const processed = (promptProgress.processed || 0) - (promptProgress.cache || 0)}
 				{@const total = (promptProgress.total || 0) - (promptProgress.cache || 0)}
 				{@const percent = total > 0 ? Math.round((processed / total) * 100) : 0}
 				<span>Processing {percent}%</span>
 			{:else if timings}
-				<span>Context: {timings.prompt_n || 0}/{contextUsage?.threshold || '∞'} ({contextUsage?.percent ? Math.round(contextUsage.percent) : 0}%)</span>
+				{@const ctxTotal =
+					(timings.prompt_n || 0) + (timings.cache_n || 0) + (timings.predicted_n || 0)}
+				<span
+					>Context: {ctxTotal}/{contextUsage?.threshold || '∞'} ({contextUsage?.percent
+						? Math.round(contextUsage.percent)
+						: 0}%)</span
+				>
 				<span>Output: {timings.predicted_n || 0}/∞</span>
-				<span>{timings.predicted_per_second ? timings.predicted_per_second.toFixed(1) : '0.0'} t/s</span>
+				<span
+					>{timings.predicted_per_second ? timings.predicted_per_second.toFixed(1) : '0.0'} t/s</span
+				>
 			{/if}
 		</div>
 	{/if}
@@ -1146,7 +1165,7 @@
 	{/if}
 
 	<div
-		class="rounded-2xl shadow-lg border border-gray-100/40 dark:border-white/8 focus-within:border-gray-200/50 focus-within:dark:border-white/16 transition px-1 bg-white dark:bg-gray-500/10"
+		class="rounded-2xl shadow-lg border border-gray-100/40 dark:border-white/8 focus-within:border-gray-200/50 focus-within:dark:border-white/16 transition px-1 bg-white dark:bg-gray-500/5"
 	>
 		<!-- Uploaded Files Preview -->
 		{#if attachedUploads.length > 0}
@@ -1240,60 +1259,63 @@
 			class="flex items-center justify-between mt-0.5 mb-2.5 mx-0.5"
 			onmousedown={(e) => e.stopPropagation()}
 		>
-			<div class="ml-0.5 self-end flex items-center gap-1">
-				<PlusMenu
-					onfiles={(files) => {
-						if (files) processFiles(Array.from(files));
-					}}
-					oncapture={(file) => {
-						processFiles([file]);
-					}}
-				/>
-				{#if $planMode}
-					<button
-						type="button"
-						class="group p-[5px] flex gap-1 items-center text-xs rounded-full transition-colors duration-150
-						text-gray-600 dark:text-gray-300 bg-gray-50 hover:bg-gray-100 dark:bg-white/8 dark:hover:bg-white/12 border border-gray-200 dark:border-white/8"
-						onclick={() => planMode.set(false)}
-					>
-						<svg
-							class="size-3 shrink-0 group-hover:hidden"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.75"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-							<polyline points="14 2 14 8 20 8" />
-							<line x1="9" y1="13" x2="15" y2="13" />
-							<line x1="9" y1="17" x2="15" y2="17" />
-						</svg>
-						<svg
-							class="size-3 shrink-0 hidden group-hover:block"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<line x1="18" y1="6" x2="6" y2="18" />
-							<line x1="6" y1="6" x2="18" y2="18" />
-						</svg>
-					</button>
-				{/if}
-			</div>
 			<div class="self-end mr-1 flex items-center gap-2">
+				<div class="ml-0.5 self-end flex items-center gap-1">
+					<PlusMenu
+						onfiles={(files) => {
+							if (files) processFiles(Array.from(files));
+						}}
+						oncapture={(file) => {
+							processFiles([file]);
+						}}
+					/>
+					{#if $planMode}
+						<button
+							type="button"
+							class="group p-[5px] flex gap-1 items-center text-xs rounded-md transition-colors duration-150
+						text-gray-600 dark:text-gray-300 bg-gray-50 hover:bg-gray-100 dark:bg-white/8 dark:hover:bg-white/12 border border-gray-200 dark:border-white/8"
+							onclick={() => planMode.set(false)}
+						>
+							<svg
+								class="size-3 shrink-0 group-hover:hidden"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.75"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
+								<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+								<polyline points="14 2 14 8 20 8" />
+								<line x1="9" y1="13" x2="15" y2="13" />
+								<line x1="9" y1="17" x2="15" y2="17" />
+							</svg>
+							<svg
+								class="size-3 shrink-0 hidden group-hover:block"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
+								<line x1="18" y1="6" x2="6" y2="18" />
+								<line x1="6" y1="6" x2="18" y2="18" />
+							</svg>
+						</button>
+					{/if}
+				</div>
+
 				{#if contextUsage}
 					<button
 						type="button"
-						class="flex items-center justify-center p-[5px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded-full hover:bg-gray-50 dark:hover:bg-white/8 transition-colors outline-none"
+						class="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors duration-100"
 						onclick={onstatus}
 						aria-label="Status"
-						title={`Context: ${contextPercent}%`}
+						title={`context: ${contextPercent}%`}
 					>
+						<span class="text-[11px]">{`${contextPercent}%`}</span>
+
 						<svg class="size-3.5 -rotate-90" viewBox="0 0 20 20" aria-hidden="true">
 							<circle
 								cx="10"
@@ -1301,7 +1323,7 @@
 								r="8"
 								fill="none"
 								stroke="currentColor"
-								stroke-width="2"
+								stroke-width="3"
 								class="opacity-20"
 							/>
 							<circle
@@ -1310,7 +1332,7 @@
 								r="8"
 								fill="none"
 								stroke="currentColor"
-								stroke-width="2"
+								stroke-width="3"
 								stroke-linecap="round"
 								stroke-dasharray="50.27"
 								style={`stroke-dashoffset: ${contextCircleOffset};`}
@@ -1318,6 +1340,9 @@
 						</svg>
 					</button>
 				{/if}
+			</div>
+
+			<div class="self-end mr-1 flex items-center gap-2">
 				<ModelSelector bind:selectedModel />
 				<DictateButton
 					ontext={(text) => {

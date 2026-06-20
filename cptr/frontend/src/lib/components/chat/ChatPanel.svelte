@@ -405,7 +405,9 @@
 		pending_inputs_processed?: boolean;
 		async_subagent_pending?: boolean;
 		title?: string;
-		}) {
+		prompt_progress?: any;
+		timings?: any;
+	}) {
 		// On the landing page, update the chat list in place from socket events
 		if (isLanding) {
 			const knownChat = previousChats.some((c) => c.id === data.chat_id);
@@ -452,8 +454,16 @@
 			return;
 		}
 
-		if (data.prompt_progress) activePromptProgress = data.prompt_progress;
-		if (data.timings) activeTimings = data.timings;
+		if (data.prompt_progress) {
+			activePromptProgress = data.prompt_progress;
+		}
+		if (data.timings) {
+			activeTimings = data.timings;
+			activePromptProgress = null; // Generation started, clear prompt progress
+		}
+		if (data.delta) {
+			activePromptProgress = null;
+		}
 
 		const msg = allMessages.find((m) => m.id === data.message_id);
 		if (!msg) return;

@@ -1420,6 +1420,7 @@ async def run_chat_task(
             pending_calls: list[dict] = []  # Collect tool calls from this response
             response_reasoning_items: list[dict] = []  # Pair with tool outputs on the next request
             streamed_reasoning_chars = 0
+            last_timings = None
 
             async for event in stream:
                 if event["type"] == "text_delta":
@@ -1461,6 +1462,7 @@ async def run_chat_task(
                     await emit(prompt_progress=event["progress"])
 
                 elif event["type"] == "timings":
+                    last_timings = event["timings"]
                     await emit(timings=event["timings"])
 
                 elif event["type"] == "usage":
@@ -1469,6 +1471,11 @@ async def run_chat_task(
                         usage["total_tokens"] = usage.get("input_tokens", 0) + usage.get(
                             "output_tokens", 0
                         )
+                    if last_timings:
+                        if "prompt_per_second" in last_timings:
+                            usage["prompt_per_second"] = last_timings["prompt_per_second"]
+                        if "predicted_per_second" in last_timings:
+                            usage["generation_per_second"] = last_timings["predicted_per_second"]
                     last_usage = usage
                     new_messages_since = 0
 

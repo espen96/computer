@@ -354,6 +354,9 @@
 			if (value >= 1000) return `${(value / 1000).toFixed(2)}s`;
 			return `${value.toFixed(0)}ms`;
 		}
+		if (key.includes('second')) {
+			return `${value.toFixed(1)} t/s`;
+		}
 		if (key.includes('token') || key.includes('count')) {
 			return value.toLocaleString();
 		}
