@@ -118,7 +118,7 @@ export const sendMessage = (
 	parentId?: string | null,
 	params: ChatSendParams = {},
 	regenerationPrompt?: string,
-	files?: { id: string; name: string; url: string; type: string }[]
+	files?: { id: string; name: string; url: string; type: string; content_type?: string }[]
 ) =>
 	fetchJSON<SendMessageResult>(
 		'/api/chats',

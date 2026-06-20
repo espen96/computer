@@ -486,6 +486,9 @@ async def _load_message_history(chat_id: str, message_id: str) -> tuple[list[dic
 
     Returns (messages, chat_summary_or_None).
     """
+    chat = await Chat.get_by_id(chat_id)
+    workspace = chat.meta.get("workspace") if chat and chat.meta else None
+
     all_msgs = await ChatMessage.get_all_by_chat(chat_id)
     msg_map = {m.id: m for m in all_msgs}
 
@@ -521,6 +524,11 @@ async def _load_message_history(chat_id: str, message_id: str) -> tuple[list[dic
         # Transform uploaded images into base64 multimodal blocks; inline text files
         if m.role == "user":
             attached_files = (m.meta or {}).get("files", [])
+            
+            if attached_files and workspace:
+                from cptr.utils.chat_uploads import sync_chat_uploads
+                attached_files = sync_chat_uploads(workspace, attached_files)
+
             images = [
                 f
                 for f in attached_files
@@ -529,26 +537,26 @@ async def _load_message_history(chat_id: str, message_id: str) -> tuple[list[dic
             ]
             non_images = [f for f in attached_files if isinstance(f, dict) and f not in images]
 
-            if images or non_images:
+            if attached_files:
                 from cptr.utils.storage import get_storage
                 import base64
 
                 text_content = entry["content"]
-
-                # Append file:// references so the AI can read them with read_file
-                if non_images:
-                    from cptr.utils.storage import UPLOADS_DIR
-
-                    file_refs = []
-                    for f in non_images:
-                        file_id = f.get("id")
-                        if not file_id:
-                            continue
-                        name = f.get("name", "file")
-                        file_path = UPLOADS_DIR / file_id
-                        file_refs.append(f"[{name}](file://{file_path})")
-                    if file_refs:
-                        text_content += "\n\nAttached files:\n" + "\n".join(file_refs)
+                
+                # Build <attached_files> block
+                xml_lines = ["<attached_files>"]
+                for f in attached_files:
+                    f_type = f.get("type", "file")
+                    f_name = f.get("name", "file")
+                    f_ctype = f.get("content_type", "application/octet-stream")
+                    f_path = f.get("workspace_path", "")
+                    
+                    xml_lines.append(
+                        f'<file type="{f_type}" name="{f_name}" content_type="{f_ctype}" path="{f_path}"/>'
+                    )
+                xml_lines.append("</attached_files>")
+                
+                text_content += "\n\n" + "\n".join(xml_lines)
 
                 content_blocks = [{"type": "text", "text": text_content}] if text_content else []
 

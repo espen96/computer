@@ -131,7 +131,7 @@
 
 	// ── File Uploads ────────────────────────────────
 	let attachedUploads = $state<
-		{ id: string; name: string; url: string; type: string; loading?: boolean }[]
+		{ id: string; name: string; url: string; type: string; loading?: boolean; content_type?: string }[]
 	>([]);
 	let isDragging = $state(false);
 
@@ -148,7 +148,7 @@
 				const res = await uploadFile(form);
 				if (res && res.id) {
 					attachedUploads = attachedUploads.map((u) =>
-						u.id === id ? { ...u, id: res.id, url: res.url, loading: false } : u
+						u.id === id ? { ...u, id: res.id, url: res.url, content_type: res.content_type, loading: false } : u
 					);
 				} else {
 					attachedUploads = attachedUploads.filter((u) => u.id !== id);

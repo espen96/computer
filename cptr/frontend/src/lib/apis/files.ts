@@ -33,7 +33,7 @@ export const uploadFiles = (path: string, form: FormData) =>
 	fetchHandler('/api/workspace/files/upload', { method: 'POST', body: form });
 
 export const uploadFile = (form: FormData) =>
-	fetchJSON<{ id: string; url: string }>('/api/files', { method: 'POST', body: form });
+	fetchJSON<{ id: string; url: string; content_type: string }>('/api/files', { method: 'POST', body: form });
 
 export const downloadArchive = (paths: string[]) =>
 	fetchHandler('/api/workspace/files/archive', { method: 'POST', ...jsonBody({ paths }) });
