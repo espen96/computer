@@ -675,14 +675,47 @@ async def _load_message_history(chat_id: str, message_id: str) -> tuple[list[dic
                                 entry["reasoning_items"] = turn["reasoning"]
                     for out in turn["outputs"]:
                         result.append(entry)
-                        entry = {
-                            "role": "tool",
-                            "tool_call_id": out["call_id"],
-                            "content": _tool_result_for_model(
-                                call_names.get(out["call_id"], ""),
-                                out.get("output", ""),
-                            ),
-                        }
+                        raw_output = _tool_result_for_model(
+                            call_names.get(out["call_id"], ""),
+                            out.get("output", ""),
+                        )
+                        # Re-apply image data-URI detection so that image tool
+                        # results from previous turns are never sent as raw
+                        # base64 text in the content channel.
+                        image = _parse_image_data_uri(raw_output)
+                        if image:
+                            media_type, b64_data = image
+                            # Recover the file path from the matching function_call item
+                            matching_call = next(
+                                (
+                                    i
+                                    for i in m.output
+                                    if i.get("type") == "function_call"
+                                    and i.get("call_id") == out["call_id"]
+                                ),
+                                None,
+                            )
+                            img_path = (
+                                (matching_call or {}).get("arguments", {}).get("path", "image")
+                            )
+                            entry = {
+                                "role": "tool",
+                                "tool_call_id": out["call_id"],
+                                "content": [
+                                    {"type": "text", "text": f"Image file: {img_path}"},
+                                    {
+                                        "type": "image",
+                                        "media_type": media_type,
+                                        "base64": b64_data,
+                                    },
+                                ],
+                            }
+                        else:
+                            entry = {
+                                "role": "tool",
+                                "tool_call_id": out["call_id"],
+                                "content": raw_output,
+                            }
 
         result.append(entry)
 
@@ -1348,35 +1381,38 @@ async def run_chat_task(
 
             # Anthropic supports images natively in tool_result content blocks.
             # Chat Completions and Responses API don't support multimodal tool messages,
-            # so extract images into a follow-up user message.
+            # so extract images and inject them as a user message immediately after
+            # the tool message they came from.  This keeps the conversation ordering
+            # stable: turn 3's image always appears right after turn 3's tool result,
+            # regardless of what turn we're currently on.
             api_messages = messages
             if provider != "anthropic":
-                image_blocks = []
                 api_messages = []
                 for m in messages:
                     if m.get("role") == "tool" and isinstance(m.get("content"), list):
                         text_parts = []
+                        tool_image_blocks = []
                         for part in m["content"]:
                             if part.get("type") == "text":
                                 text_parts.append(part.get("text", ""))
                             elif part.get("type") == "image":
-                                image_blocks.append(part)
+                                tool_image_blocks.append(part)
                         api_messages.append({**m, "content": "\n".join(text_parts)})
+                        if tool_image_blocks:
+                            api_messages.append(
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": "Here are the images from the tool results above.",
+                                        },
+                                        *tool_image_blocks,
+                                    ],
+                                }
+                            )
                     else:
                         api_messages.append(m)
-                if image_blocks:
-                    api_messages.append(
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": "Here are the images from the tool results above.",
-                                },
-                                *image_blocks,
-                            ],
-                        }
-                    )
 
             form_data = ChatCompletionForm(
                 model=model,
