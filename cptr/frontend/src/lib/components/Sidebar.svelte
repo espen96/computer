@@ -492,7 +492,7 @@
 					e.preventDefault();
 					goto('/');
 					if (typeof window !== 'undefined' && window.innerWidth < 768) sidebarOpen.set(false);
-				}}><img src="/favicon.png" alt="cptr logo" class="w-4 h-4" />cptr</a
+				}}><img src="/favicon.png" alt="cptr logo" class="w-4 h-4 hidden" />cptr</a
 			>
 			<button
 				class="flex items-center justify-center w-7 h-7 rounded-lg text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors duration-100"
@@ -542,7 +542,9 @@
 		{/if}
 		<!-- Workspace section header -->
 		<div class="flex items-center justify-between h-8 pl-3.5 pr-1.5 shrink-0">
-			<span class="text-xs text-gray-400 dark:text-gray-500">{$t('sidebar.workspaces')}</span>
+			<span class="text-xs text-gray-400 dark:text-gray-500 font-bold"
+				>{$t('sidebar.workspaces')}</span
+			>
 			<button
 				class="flex items-center justify-center w-7 h-7 rounded-lg text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors duration-100"
 				onclick={() => {
@@ -555,7 +557,7 @@
 				aria-label={$t('sidebar.addWorkspace')}
 				use:tooltip={$t('sidebar.addWorkspace')}
 			>
-				<Icon name="plus" size={14} />
+				<Icon name="plus" size={16} />
 			</button>
 		</div>
 
@@ -687,7 +689,7 @@
 
 		<!-- Chats section header -->
 		{#if $chatEnabled}
-			<div class="flex items-center justify-between h-8 pl-3.5 pr-1.5 shrink-0">
+			<div class="flex items-center justify-between h-8 pl-3.5 pr-1.5 shrink-0 font-bold">
 				<span class="text-xs text-gray-400 dark:text-gray-500">{$t('sidebar.chats')}</span>
 				<button
 					class="flex items-center justify-center w-7 h-7 rounded-lg text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors duration-100"
@@ -695,7 +697,7 @@
 					aria-label={$t('sidebar.newChat')}
 					use:tooltip={$t('sidebar.newChat')}
 				>
-					<Icon name="plus" size={14} />
+					<Icon name="plus" size={16} />
 				</button>
 			</div>
 
@@ -802,7 +804,7 @@
 							e.stopPropagation();
 							showChangelog.set(true);
 						}}
-						class="ml-auto text-[10px] text-gray-400 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 font-mono hover:underline cursor-pointer"
+						class="ml-auto text-[10px] text-gray-400 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 font-mono hover:underline cursor-pointer hidden"
 					>
 						v{$appVersion}
 					</button>

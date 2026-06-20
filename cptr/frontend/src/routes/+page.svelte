@@ -661,7 +661,7 @@
 	<div
 		class="flex flex-col items-center justify-start h-full p-6 overflow-y-auto bg-gray-50 dark:bg-gray-950/40"
 	>
-		<div class="w-full max-w-3xl flex flex-col items-center pt-[10dvh]">
+		<div class="w-full max-w-3xl flex flex-col items-center pt-[10dvh] md:pt-[25dvh]">
 			<!-- Header -->
 			<div class="mb-6 text-center">
 				<h1 class="text-3xl font-light tracking-tight text-gray-950 dark:text-white mb-2">

@@ -29,7 +29,6 @@
 		| 'pwa'
 		| 'keyboard'
 		| 'account'
-		| 'about'
 		| 'users'
 		| 'connections'
 		| 'models'
@@ -77,7 +76,6 @@
 			{ id: 'account', label: $t('settings.account'), icon: 'user' }
 		];
 		if (showPwaSettings) tabs.push({ id: 'pwa', label: 'PWA', icon: 'phone' });
-		tabs.push({ id: 'about', label: $t('settings.about'), icon: 'info' });
 		return tabs;
 	});
 
@@ -120,7 +118,7 @@
 
 <Modal
 	{onclose}
-	class="w-full max-w-3xl mx-4 md:mx-0 flex flex-col md:flex-row h-[100vh] md:h-[560px]"
+	class="w-full max-w-3xl mx-4 md:mx-0 flex flex-col md:flex-row h-full md:h-[560px] rounded-none! md:rounded-2xl!"
 >
 	<nav
 		class="shrink-0 min-w-0 overflow-x-auto md:overflow-x-visible scrollbar-hidden border-b md:border-b-0 md:border-r border-gray-200 dark:border-white/6 md:w-[180px]"
@@ -171,20 +169,18 @@
 	</nav>
 
 	<div class="flex-1 overflow-y-auto min-h-0 p-4 md:px-5">
-			{#if activeTab === 'general'}
-				<General />
-			{:else if activeTab === 'system_stats'}
-				<SystemStats />
-			{:else if activeTab === 'memory'}
-				<Memory />
-			{:else if activeTab === 'pwa' && showPwaSettings}
+		{#if activeTab === 'general'}
+			<General />
+		{:else if activeTab === 'system_stats'}
+			<SystemStats />
+		{:else if activeTab === 'memory'}
+			<Memory />
+		{:else if activeTab === 'pwa' && showPwaSettings}
 			<PWA />
 		{:else if activeTab === 'keyboard'}
 			<Keyboard />
 		{:else if activeTab === 'account'}
 			<Account />
-		{:else if activeTab === 'about'}
-			<About />
 		{:else if activeTab === 'users'}
 			<Users />
 		{:else if activeTab === 'connections'}
