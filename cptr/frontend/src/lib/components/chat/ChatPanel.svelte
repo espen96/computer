@@ -793,7 +793,25 @@
 				// Update currentWorkspace path and name
 				currentWorkspace.update((ws) => {
 					if (!ws) return ws;
-					return { ...ws, path: newWorkspace, name: newName };
+					
+					// Manually ensure the Files tab is present now that the chat is created
+					const updatedGroups = ws.groups.map((g) => {
+						const hasFiles = g.tabs.some((t: any) => t.type === 'files');
+						if (hasFiles) return g;
+						
+						return {
+							...g,
+							tabs: [...g.tabs, { id: `files-${Date.now()}`, type: 'files', label: 'Files', permanent: true } as any]
+						};
+					});
+
+					return { 
+						...ws, 
+						path: newWorkspace, 
+						name: newName, 
+						groups: updatedGroups,
+						fileBrowserCwd: newWorkspace 
+					};
 				});
 				// Update URL to reflect new workspace path
 				const url = new URL(window.location.href);
@@ -804,8 +822,6 @@
 					removeWorkspace(oldPath).catch(() => {});
 				}
 				loadChatList();
-				// Reload workspace from server to get full state (Files tab etc.)
-				loadWorkspace(newWorkspace);
 			}
 		} catch (e) {
 			console.error('[chat] send error', e);

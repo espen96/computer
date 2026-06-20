@@ -168,7 +168,7 @@ function createDefaultWorkspace(path: string): WorkspaceState {
 
 export function createChatModeWorkspace(path: string): WorkspaceState {
 	const name = path.split('/').filter(Boolean).pop() || path;
-	const group = createChatModeGroup();
+	const group = createChatModeGroup(!path.includes('temp-'));
 	chatModeTabs.update((s) => new Set([...s, group.activeTabId]));
 	return {
 		name,
