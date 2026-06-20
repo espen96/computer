@@ -652,14 +652,12 @@ async def _load_message_history(chat_id: str, message_id: str) -> tuple[list[dic
                         turn_content = entry.get("content", "")
 
                     if matched_calls or turn_content or turn["reasoning"]:
-                        assistant_msg = {
-                            "role": "assistant",
-                            "content": turn_content,
-                        }
-                        if matched_calls:
-                            assistant_msg["tool_calls"] = matched_calls
+                        assistant_msg = {"role": "assistant"}
                         if turn["reasoning"]:
                             assistant_msg["reasoning_items"] = turn["reasoning"]
+                        assistant_msg["content"] = turn_content
+                        if matched_calls:
+                            assistant_msg["tool_calls"] = matched_calls
                         result.append(assistant_msg)
 
                     for out in turn["outputs"]:
@@ -912,13 +910,11 @@ def _append_batch_to_messages(
             }
         )
 
-    assistant_msg: dict = {
-        "role": "assistant",
-        "content": "",
-        "tool_calls": tool_calls,
-    }
+    assistant_msg: dict = {"role": "assistant"}
     if reasoning_items:
         assistant_msg["reasoning_items"] = reasoning_items
+    assistant_msg["content"] = ""
+    assistant_msg["tool_calls"] = tool_calls
     messages.append(assistant_msg)
 
     for event, result in call_results:
