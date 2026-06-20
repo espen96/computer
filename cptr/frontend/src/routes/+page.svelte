@@ -761,7 +761,7 @@
 					{/if}
 				</div>
 
-				<!-- Projects Column -->
+				<!-- Workspaces Column -->
 				<div class="flex flex-col">
 					<div
 						class="flex items-center justify-between mb-3 border-b border-gray-100 dark:border-white/6 pb-1.5"
@@ -769,7 +769,7 @@
 						<h3
 							class="text-xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider"
 						>
-							Projects
+							Workspaces
 						</h3>
 						{#if $workspaceMode === 'project'}
 							<button

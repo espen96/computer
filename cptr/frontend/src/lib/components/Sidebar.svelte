@@ -551,7 +551,7 @@
 		</div>
 
 		<!-- Workspace list -->
-		<div bind:this={wsListEl} class="flex-1 overflow-y-auto px-1.5">
+		<div bind:this={wsListEl} class="overflow-y-auto px-1.5">
 			{#each $workspaceList as ws (ws.path)}
 				{@const isExpanded = expandedWorkspaces.has(ws.path)}
 				{@const chats = wsChatsCache.get(ws.path)}
