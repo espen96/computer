@@ -16,12 +16,14 @@
 		memoryModalScope,
 		chatList,
 		renameChat,
-		loadChatList
+		loadChatList,
+		workspaceMode
 	} from '$lib/stores';
 	import Sortable from 'sortablejs';
 	import Icon from './Icon.svelte';
 	import KeyPill from './KeyPill.svelte';
 	import DirectoryPicker from './DirectoryPicker.svelte';
+	import NewProjectModal from './NewProjectModal.svelte';
 	import DropdownMenu from './DropdownMenu.svelte';
 	import SettingsModal, { type Tab } from './SettingsModal.svelte';
 
@@ -38,6 +40,7 @@
 	import { onMount, onDestroy } from 'svelte';
 
 	let showPicker = $state(false);
+	let showNewProjectModal = $state(false);
 	let showMenu = $state(false);
 	let showSettings = $state(false);
 	let settingsTab = $state<Tab>('general');
@@ -542,7 +545,13 @@
 			<span class="text-xs text-gray-400 dark:text-gray-500">{$t('sidebar.workspaces')}</span>
 			<button
 				class="flex items-center justify-center w-7 h-7 rounded-lg text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors duration-100"
-				onclick={() => (showPicker = true)}
+				onclick={() => {
+					if ($workspaceMode === 'project') {
+						showNewProjectModal = true;
+					} else {
+						showPicker = true;
+					}
+				}}
 				aria-label={$t('sidebar.addWorkspace')}
 				use:tooltip={$t('sidebar.addWorkspace')}
 			>
@@ -846,6 +855,10 @@
 
 {#if showPicker}
 	<DirectoryPicker onclose={() => (showPicker = false)} />
+{/if}
+
+{#if showNewProjectModal}
+	<NewProjectModal onclose={() => (showNewProjectModal = false)} />
 {/if}
 
 {#if wsMenuPath && wsMenuAnchor}
